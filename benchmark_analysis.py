@@ -107,3 +107,18 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
 plot_data("", "implementation", "threads", "items_per_second", facet_group="size")
 plot_data("", "implementation", "size", "items_per_second", facet_group="threads")
 plot_data("jemalloc", "threads", "size", "items_per_second", plot_filter=lambda b: b["implementation"] == "jemalloc")
+
+def calculate_ratio(benchmark_filter, ratio_label, numerator_filter, denominator_filter):
+    filtered_benchmarks = [bench for bench in benchmarks if all(bench[key] == value for key, value in benchmark_filter.items())]
+    numerator_filter_lambda = lambda b: all(b[key] == value for key, value in numerator_filter.items())
+    numerator = [bench for bench in filtered_benchmarks if numerator_filter_lambda(bench)]
+    denominator_filter_lambda = lambda b: all(b[key] == value for key, value in denominator_filter.items())
+    denominator = [bench for bench in filtered_benchmarks if denominator_filter_lambda(bench)]
+    if len(numerator) != len(denominator) or len(numerator) != 1:
+        print(f"Warning: different number of numerator and denominator benchmarks for {benchmark_filter}")
+        return
+    print(f"Ratio for {benchmark_filter} {numerator_filter} / {denominator_filter}: {numerator[0][ratio_label] / denominator[0][ratio_label]} {ratio_label}/{ratio_label}")
+
+
+calculate_ratio({"threads": 8, "size": 2**10}, "items_per_second", {"implementation": "tcmalloc"}, {"implementation": "libmalloc"})
+calculate_ratio({"threads": 8, "size": 2**20}, "items_per_second", {"implementation": "tcmalloc"}, {"implementation": "libmalloc"})
