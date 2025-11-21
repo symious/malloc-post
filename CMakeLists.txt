@@ -20,11 +20,32 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(benchmark)
 
-# Add executable target
-add_executable(${PROJECT_NAME}
+# Find jemalloc if installed, optional
+find_library(JEMALLOC_LIBRARY jemalloc)
+find_path(JEMALLOC_INCLUDE_DIR jemalloc/jemalloc.h)
+
+# Define executable names in variables
+set(EXEC_SYSTEM "${PROJECT_NAME}-system")
+set(EXEC_JEMALLOC "${PROJECT_NAME}-jemalloc")
+
+# System allocator executable
+add_executable(${EXEC_SYSTEM}
     src/main.cpp
 )
+target_link_libraries(${EXEC_SYSTEM} PRIVATE benchmark::benchmark pthread)
+target_include_directories(${EXEC_SYSTEM} PRIVATE include)
 
-# Include directories for headers
-target_link_libraries(${PROJECT_NAME} PRIVATE benchmark::benchmark pthread)
-target_include_directories(${PROJECT_NAME} PRIVATE include)
+# Jemalloc allocator executable
+add_executable(${EXEC_JEMALLOC}
+    src/main.cpp
+)
+target_link_libraries(${EXEC_JEMALLOC} PRIVATE benchmark::benchmark pthread)
+
+if(JEMALLOC_LIBRARY AND JEMALLOC_INCLUDE_DIR)
+    target_include_directories(${EXEC_JEMALLOC} PRIVATE ${JEMALLOC_INCLUDE_DIR})
+    target_link_libraries(${EXEC_JEMALLOC} PRIVATE ${JEMALLOC_LIBRARY})
+else()
+    message(WARNING "jemalloc not found. ${EXEC_JEMALLOC} will link without jemalloc.")
+endif()
+
+target_include_directories(${EXEC_JEMALLOC} PRIVATE include)
