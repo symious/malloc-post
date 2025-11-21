@@ -3,9 +3,10 @@
 #include <thread>
 #include <random>
 #include <cstdlib>
+#include <chrono>
 
 // Allocation payload: allocate and free N blocks of size sz.
-static void BM_Throughput(benchmark::State& state) {
+static void BM_AllocationThroughput(benchmark::State& state) {
     // Size of each allocation
     size_t sz = size_t(state.range(0));
     // Number of allocations per thread per iteration
@@ -40,7 +41,7 @@ static void BM_Throughput(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * n);
 }
 
-BENCHMARK(BM_Throughput)
+BENCHMARK(BM_AllocationThroughput)
     ->RangeMultiplier(2)
     ->Range(1 << 6, 1 << 20)
     ->Threads(1)
@@ -48,6 +49,32 @@ BENCHMARK(BM_Throughput)
     ->Threads(4)
     ->Threads(8)
     ->Threads(16)
-    ->Threads(32);;
+    ->Threads(32);
+
+static void BM_AllocationLatency(benchmark::State& state) {
+    size_t sz = size_t(state.range(0));
+
+    for (auto _ : state) {
+        state.PauseTiming();
+
+        auto start = std::chrono::high_resolution_clock::now();
+        void* ptr = malloc(sz);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        if (!ptr) state.SkipWithError("malloc failed");
+
+        auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+        state.SetIterationTime(elapsed.count());
+
+        free(ptr);
+        state.ResumeTiming();
+    }
+}
+
+BENCHMARK(BM_AllocationLatency)
+    ->RangeMultiplier(2)
+    ->Range(1 << 6, 1 << 20)
+    ->Iterations(1000000)
+    ->UseManualTime();
 
 BENCHMARK_MAIN();
