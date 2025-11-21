@@ -74,7 +74,13 @@ static void BM_AllocationLatency(benchmark::State& state) {
 BENCHMARK(BM_AllocationLatency)
     ->RangeMultiplier(2)
     ->Range(1 << 6, 1 << 20)
-    ->Iterations(1000000)
-    ->UseManualTime();
+    ->Iterations(100000)
+    ->UseManualTime()
+    ->Threads(1)
+    ->Threads(2)
+    ->Threads(4)
+    ->Threads(8)
+    ->Threads(16)
+    ->Threads(32);
 
 BENCHMARK_MAIN();
