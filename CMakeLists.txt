@@ -15,7 +15,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(benchmark)
 
-set(MALLOC_IMPLEMENTATIONS jemalloc mimalloc)
+set(MALLOC_IMPLEMENTATIONS jemalloc mimalloc hoard tcmalloc)
 
 # Include directories for homebrew (customize if needed)
 set(HOMEBREW_PREFIX /opt/homebrew CACHE PATH "Homebrew prefix")

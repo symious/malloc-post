@@ -1,7 +1,10 @@
 ## Building
 
 ```bash
-brew install mimalloc jemalloc #tcmalloc #hoard #dmalloc
+brew tap emeryberger/hoard
+brew install --HEAD emeryberger/hoard/libhoard
+brew install mimalloc jemalloc
+brew install gperftools # tcmalloc
 ```
 
 ```bash
