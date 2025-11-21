@@ -1,51 +1,37 @@
 cmake_minimum_required(VERSION 3.31)
+project(malloc-post VERSION 0.1.0 LANGUAGES CXX)
 
-project(malloc-post
-    VERSION 0.1.0
-    LANGUAGES CXX
-)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
-
-# Set C++ standard
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # Download Google Benchmark
 set(BENCHMARK_DOWNLOAD_DEPENDENCIES ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
-        benchmark
-        GIT_REPOSITORY https://github.com/google/benchmark.git
-        GIT_TAG v1.9.4  # or the desired release tag
+    benchmark
+    GIT_REPOSITORY https://github.com/google/benchmark.git
+    GIT_TAG v1.9.4
 )
 FetchContent_MakeAvailable(benchmark)
 
-# Find jemalloc if installed, optional
+# Find jemalloc if installed (optional)
 find_library(JEMALLOC_LIBRARY jemalloc)
-find_path(JEMALLOC_INCLUDE_DIR jemalloc/jemalloc.h)
 
-# Define executable names in variables
-set(EXEC_SYSTEM "${PROJECT_NAME}-libmalloc")
-set(EXEC_JEMALLOC "${PROJECT_NAME}-jemalloc")
+set(PROJECT_NAME_LIBMALLOC "${PROJECT_NAME}-libmalloc")
+set(PROJECT_NAME_JEMALLOC "${PROJECT_NAME}-jemalloc")
 
-# System allocator executable
-add_executable(${EXEC_SYSTEM}
-    src/main.cpp
-)
-target_link_libraries(${EXEC_SYSTEM} PRIVATE benchmark::benchmark pthread)
-target_include_directories(${EXEC_SYSTEM} PRIVATE include)
-
-# Jemalloc allocator executable
-add_executable(${EXEC_JEMALLOC}
-    src/main.cpp
-)
-target_link_libraries(${EXEC_JEMALLOC} PRIVATE benchmark::benchmark pthread)
-
-if(JEMALLOC_LIBRARY AND JEMALLOC_INCLUDE_DIR)
-    target_include_directories(${EXEC_JEMALLOC} PRIVATE ${JEMALLOC_INCLUDE_DIR})
-    target_link_libraries(${EXEC_JEMALLOC} PRIVATE ${JEMALLOC_LIBRARY})
+# Build with jemalloc
+add_executable(${PROJECT_NAME_JEMALLOC} src/main.cpp)
+target_link_libraries(${PROJECT_NAME_JEMALLOC} PRIVATE benchmark::benchmark pthread)
+if(JEMALLOC_LIBRARY)
+    target_link_libraries(${PROJECT_NAME_JEMALLOC} PRIVATE ${JEMALLOC_LIBRARY})
 else()
-    message(WARNING "jemalloc not found. ${EXEC_JEMALLOC} will link without jemalloc.")
+    message(WARNING "jemalloc not found. ${PROJECT_NAME_JEMALLOC} will use system allocator.")
 endif()
+target_include_directories(${PROJECT_NAME_JEMALLOC} PRIVATE include)
 
-target_include_directories(${EXEC_JEMALLOC} PRIVATE include)
+# Build with system allocator
+add_executable(${PROJECT_NAME_LIBMALLOC} src/main.cpp)
+target_link_libraries(${PROJECT_NAME_LIBMALLOC} PRIVATE benchmark::benchmark pthread)
+target_include_directories(${PROJECT_NAME_LIBMALLOC} PRIVATE include)
