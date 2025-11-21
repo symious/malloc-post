@@ -42,7 +42,7 @@ static void BM_MallocFree_Multithreaded(benchmark::State& state) {
 
 BENCHMARK(BM_MallocFree_Multithreaded)
     ->RangeMultiplier(2)
-    ->Range(1 << 6, 1 << 14)
+    ->Range(1 << 6, 1 << 20)
     ->Threads(1)
     ->Threads(2)
     ->Threads(4)

@@ -4,9 +4,12 @@ set -euo pipefail
 
 cmake --build build
 
-MALLOCS=(libmalloc jemalloc)
-for malloc in "${MALLOCS[@]}"; do
-  ./build/malloc-post-${malloc} --benchmark_out=results/${malloc}.json
+executable_prefix="./build/malloc-post-"
+
+for executable in ${executable_prefix}*; do
+  MALLOC="${executable#./build/malloc-post-}"
+  echo "Running benchmarks for ${MALLOC}"
+  ${executable} --benchmark_out=results/${MALLOC}.json > results/${MALLOC}.txt
 done
 
 python3 benchmark_analysis.py

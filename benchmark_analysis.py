@@ -11,6 +11,7 @@ results_folder = 'results'
 for filename in os.listdir(results_folder):
     if filename.endswith('.json'):
         filepath = os.path.join(results_folder, filename)
+        print(f"Loading {filepath}")
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
             for bm in data["benchmarks"]:

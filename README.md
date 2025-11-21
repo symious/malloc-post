@@ -1,7 +1,7 @@
 ## Building
 
 ```bash
-brew install jemalloc
+brew install mimalloc jemalloc #tcmalloc #hoard #dmalloc
 ```
 
 ```bash

@@ -15,23 +15,38 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(benchmark)
 
-# Find jemalloc if installed (optional)
-find_library(JEMALLOC_LIBRARY jemalloc)
+set(MALLOC_IMPLEMENTATIONS jemalloc mimalloc)
 
-set(PROJECT_NAME_LIBMALLOC "${PROJECT_NAME}-libmalloc")
-set(PROJECT_NAME_JEMALLOC "${PROJECT_NAME}-jemalloc")
+# Include directories for homebrew (customize if needed)
+set(HOMEBREW_PREFIX /opt/homebrew CACHE PATH "Homebrew prefix")
 
-# Build with jemalloc
-add_executable(${PROJECT_NAME_JEMALLOC} src/main.cpp)
-target_link_libraries(${PROJECT_NAME_JEMALLOC} PRIVATE benchmark::benchmark pthread)
-if(JEMALLOC_LIBRARY)
-    target_link_libraries(${PROJECT_NAME_JEMALLOC} PRIVATE ${JEMALLOC_LIBRARY})
-else()
-    message(WARNING "jemalloc not found. ${PROJECT_NAME_JEMALLOC} will use system allocator.")
-endif()
-target_include_directories(${PROJECT_NAME_JEMALLOC} PRIVATE include)
+foreach(MALLOC ${MALLOC_IMPLEMENTATIONS})
+    # Find the library, first try system, then Homebrew path
+    find_library(${MALLOC}_LIBRARY ${MALLOC})
+    if(NOT ${MALLOC}_LIBRARY)
+        # Try Homebrew path
+        find_library(${MALLOC}_LIBRARY ${MALLOC} PATHS ${HOMEBREW_PREFIX}/lib)
+    endif()
 
-# Build with system allocator
-add_executable(${PROJECT_NAME_LIBMALLOC} src/main.cpp)
-target_link_libraries(${PROJECT_NAME_LIBMALLOC} PRIVATE benchmark::benchmark pthread)
-target_include_directories(${PROJECT_NAME_LIBMALLOC} PRIVATE include)
+    if(${MALLOC}_LIBRARY)
+        message(STATUS "Found ${MALLOC} at ${${MALLOC}_LIBRARY}")
+    else()
+        message(WARNING "${MALLOC} not found. Will use system allocator for ${PROJECT_NAME}-${MALLOC}.")
+    endif()
+
+    # Proper executable target name
+    set(EXE_NAME "${PROJECT_NAME}-${MALLOC}")
+    add_executable(${EXE_NAME} src/main.cpp)
+
+    target_link_libraries(${EXE_NAME} PRIVATE benchmark::benchmark pthread)
+    if(${MALLOC}_LIBRARY)
+        target_link_libraries(${EXE_NAME} PRIVATE ${${MALLOC}_LIBRARY})
+    endif()
+    target_include_directories(${EXE_NAME} PRIVATE include)
+endforeach()
+
+# Build with system allocator fallback target name explicitly defined
+set(EXE_NAME "${PROJECT_NAME}-libmalloc")
+add_executable(${EXE_NAME} src/main.cpp)
+target_link_libraries(${EXE_NAME} PRIVATE benchmark::benchmark pthread)
+target_include_directories(${EXE_NAME} PRIVATE include)
