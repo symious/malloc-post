@@ -55,7 +55,6 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
     n_rows = (n_facets + n_cols - 1) // n_cols
 
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4 * n_rows), squeeze=False)
-    fig.suptitle(plot_title.replace("_", " ").title())
     axes = axes.flatten()
 
     for idx, (facet_val, facet_entries) in enumerate(facet_data.items()):
@@ -78,7 +77,7 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
                 facet_val_formatted = facet_val
             ax.set_title(f"{facet_group}: {facet_val_formatted}")
         else:
-            ax.set_title(plot_title.replace("_", " ").title())
+            ax.set_title(plot_title.replace("_", " "))
 
         ax.set_xlabel(x_label.title())
         ax.set_ylabel(y_label.replace("_", " ").title())
@@ -101,8 +100,10 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
         axes[idx].set_visible(False)
 
     plt.tight_layout()
-    plt.savefig(f"plots/{plot_title}_{y_label}_results.png", dpi=300)
+    plt.savefig(f"plots/{plot_title}_{series_grouping}_{x_label}_{y_label}_results.png", dpi=300)
     plt.close()
 
 
 plot_data("", "implementation", "threads", "items_per_second", facet_group="size")
+plot_data("", "implementation", "size", "items_per_second", facet_group="threads")
+plot_data("jemalloc", "threads", "size", "items_per_second", plot_filter=lambda b: b["implementation"] == "jemalloc")
