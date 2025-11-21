@@ -42,10 +42,10 @@ def plot_data(plot_title, plot_filter, series_grouping, x_label, y_label):
 
     plt.figure(figsize=(10,6))
     for library, points in grouped_data.items():
-        # Sort points by size for a clean plot
+        # Sort points by x for a clean plot
         points.sort(key=lambda x: x[0])
-        sizes, ips = zip(*points)
-        plt.plot(sizes, ips, marker='o', label=library)
+        xs, ips = zip(*points)
+        plt.plot(xs, ips, marker='o', label=library)
 
     plt.title(plot_title.replace("_", " ").title())
     plt.xlabel(x_label.title())
