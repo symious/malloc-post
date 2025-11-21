@@ -71,7 +71,12 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
             ax.plot(xs, ys, marker='o', label=library)
 
         if facet_group:
-            ax.set_title(f"{facet_group}: {facet_val}")
+            if facet_group == "size":
+                # format in B, KB, MB
+                facet_val_formatted = f"{facet_val / 1024} KB" if facet_val >= 1024 else f"{facet_val} B"
+            else:
+                facet_val_formatted = facet_val
+            ax.set_title(f"{facet_group}: {facet_val_formatted}")
         else:
             ax.set_title(plot_title.replace("_", " ").title())
 
@@ -100,4 +105,4 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
     plt.close()
 
 
-plot_data("malloc", "implementation", "threads", "items_per_second", facet_group="size")
+plot_data("", "implementation", "threads", "items_per_second", facet_group="size")
