@@ -25,7 +25,7 @@ find_library(JEMALLOC_LIBRARY jemalloc)
 find_path(JEMALLOC_INCLUDE_DIR jemalloc/jemalloc.h)
 
 # Define executable names in variables
-set(EXEC_SYSTEM "${PROJECT_NAME}-system")
+set(EXEC_SYSTEM "${PROJECT_NAME}-libmalloc")
 set(EXEC_JEMALLOC "${PROJECT_NAME}-jemalloc")
 
 # System allocator executable

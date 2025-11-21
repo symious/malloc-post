@@ -13,6 +13,5 @@ cmake --build build
 ## Benchmarking
 
 ```bash
-build/malloc-post-system
-build/malloc-post-jemalloc
+./benchmark.sh
 ```
