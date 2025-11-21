@@ -9,6 +9,10 @@ cover_image:
 - jemalloc widely used in high performance databases (C*, ClickHouse)
 - compare different allocators
 - compare throughput
+- compare other metrics
+  - memory footprint and overhead
+  - memory fragmentation
+  - latency
 - compare tooling (debugging, profiling, etc.)
 - compare jemalloc performance across different sizes with 8 threads
 

@@ -5,7 +5,7 @@
 #include <cstdlib>
 
 // Allocation payload: allocate and free N blocks of size sz.
-static void BM_MallocFree_Multithreaded(benchmark::State& state) {
+static void BM_Throughput(benchmark::State& state) {
     // Size of each allocation
     size_t sz = size_t(state.range(0));
     // Number of allocations per thread per iteration
@@ -40,7 +40,7 @@ static void BM_MallocFree_Multithreaded(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * n);
 }
 
-BENCHMARK(BM_MallocFree_Multithreaded)
+BENCHMARK(BM_Throughput)
     ->RangeMultiplier(2)
     ->Range(1 << 6, 1 << 20)
     ->Threads(1)
