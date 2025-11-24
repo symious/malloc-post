@@ -27,6 +27,14 @@ for filename in os.listdir(results_folder):
                 benchmarks.append(enriched_benchmark)
 
 def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, plot_filter=None, marker="o", xscale="log"):
+    implementation_colors = {
+        "libmalloc": "#1f77b4",
+        "hoard": "#ff7f0e",
+        "jemalloc": "#2ca02c",
+        "tcmalloc": "#d62728",
+        "mimalloc": "#9467bd"
+    }
+
     print(f"Plotting {plot_title}, series={series_grouping}, x={x_label}, y={y_label}, facet={facet_group}")
     if plot_filter is None:
         filtered_benchmarks = benchmarks.copy()
@@ -71,7 +79,12 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
                 grouping_suffix = " threads"
             else:
                 grouping_suffix = ""
-            ax.plot(xs, ys, marker=marker, label=f"{grouping_label}{grouping_suffix}")
+
+            plot_kwargs = {"marker": marker, "label": f"{grouping_label}{grouping_suffix}"}
+            if series_grouping == "implementation" and grouping_label in implementation_colors:
+                plot_kwargs["color"] = implementation_colors[grouping_label]
+
+            ax.plot(xs, ys, **plot_kwargs)
 
         if facet_group:
             if facet_group == "size":
@@ -123,13 +136,13 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
 
 plot_data("allocation_throughput", "implementation", "threads", "items_per_second", facet_group="size", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput")
 plot_data("allocation_throughput", "implementation", "size", "items_per_second", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput")
-plot_data("allocation_throughput_jemalloc", "threads", "size", "items_per_second", plot_filter=lambda b: b["implementation"] == "jemalloc" and b["bm_name"] == "AllocationThroughput")
+plot_data("allocation_throughput_tcmalloc", "threads", "size", "items_per_second", plot_filter=lambda b: b["implementation"] == "tcmalloc" and b["bm_name"] == "AllocationThroughput")
 
 plot_data("allocation_latency", "implementation", "threads", "real_time", facet_group="size", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
 plot_data("allocation_latency", "implementation", "size", "real_time", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
-plot_data("allocation_latency_jemalloc", "threads", "size", "real_time", plot_filter=lambda b: b["implementation"] == "jemalloc" and b["bm_name"] == "AllocationLatency")
+plot_data("allocation_latency_tcmalloc", "threads", "size", "real_time", plot_filter=lambda b: b["implementation"] == "tcmalloc" and b["bm_name"] == "AllocationLatency")
 
-plot_data("allocation_overhead", "implementation", "size", "overhead_bytes", plot_filter=lambda b: b["bm_name"] == "AllocationOverhead", marker=None, xscale=None)
+plot_data("allocation_overhead", "implementation", "size", "overhead_bytes", facet_group="implementation", plot_filter=lambda b: b["bm_name"] == "AllocationOverhead", marker=None, xscale=None)
 
 def calculate_ratio(benchmark_filter, ratio_label, numerator_filter, denominator_filter):
     filtered_benchmarks = [bench for bench in benchmarks if all(bench[key] == value for key, value in benchmark_filter.items())]
