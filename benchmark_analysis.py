@@ -23,7 +23,7 @@ for filename in os.listdir(results_folder):
                     "size": int(re.findall(r'/(\d+)', bm["name"])[0]),
                     **bm
                 }
-                # {'bm_name': 'MallocFree_Multithreaded', 'implementation': 'system', 'size': 8192, 'name': 'BM_MallocFree_Multithreaded/8192/threads:8', 'family_index': 0, 'per_family_instance_index': 15, 'run_name': 'BM_MallocFree_Multithreaded/8192/threads:8', 'run_type': 'iteration', 'repetitions': 1, 'repetition_index': 0, 'threads': 8, 'iterations': 5712, 'real_time': 137789.86525395754, 'cpu_time': 137266.98179271698, 'time_unit': 'ns', 'items_per_second': 7285073.124941815}
+                # {'bm_name': 'AllocationThroughput', 'implementation': 'system', 'size': 8192, 'name': 'BM_MallocFree_Multithreaded/8192/threads:8', 'family_index': 0, 'per_family_instance_index': 15, 'run_name': 'BM_MallocFree_Multithreaded/8192/threads:8', 'run_type': 'iteration', 'repetitions': 1, 'repetition_index': 0, 'threads': 8, 'iterations': 5712, 'real_time': 137789.86525395754, 'cpu_time': 137266.98179271698, 'time_unit': 'ns', 'items_per_second': 7285073.124941815}
                 benchmarks.append(enriched_benchmark)
 
 def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, plot_filter=None):
@@ -104,9 +104,9 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
     plt.close()
 
 
-plot_data("", "implementation", "threads", "items_per_second", facet_group="size")
-plot_data("", "implementation", "size", "items_per_second", facet_group="threads")
-plot_data("jemalloc", "threads", "size", "items_per_second", plot_filter=lambda b: b["implementation"] == "jemalloc")
+plot_data("allocation_throughput", "implementation", "threads", "items_per_second", facet_group="size", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput")
+plot_data("allocation_throughput", "implementation", "size", "items_per_second", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput")
+plot_data("allocation_throughput_jemalloc", "threads", "size", "items_per_second", plot_filter=lambda b: b["implementation"] == "jemalloc" and b["bm_name"] == "AllocationThroughput")
 
 def calculate_ratio(benchmark_filter, ratio_label, numerator_filter, denominator_filter):
     filtered_benchmarks = [bench for bench in benchmarks if all(bench[key] == value for key, value in benchmark_filter.items())]
@@ -120,5 +120,15 @@ def calculate_ratio(benchmark_filter, ratio_label, numerator_filter, denominator
     print(f"Ratio for {benchmark_filter} {numerator_filter} / {denominator_filter}: {numerator[0][ratio_label] / denominator[0][ratio_label]} {ratio_label}/{ratio_label}")
 
 
-calculate_ratio({"threads": 8, "size": 2**10}, "items_per_second", {"implementation": "tcmalloc"}, {"implementation": "libmalloc"})
-calculate_ratio({"threads": 8, "size": 2**20}, "items_per_second", {"implementation": "tcmalloc"}, {"implementation": "libmalloc"})
+calculate_ratio(
+    {"threads": 8, "size": 2**10},
+    "items_per_second",
+    {"implementation": "tcmalloc", "bm_name": "AllocationThroughput"},
+    {"implementation": "libmalloc", "bm_name": "AllocationThroughput"}
+)
+calculate_ratio(
+    {"threads": 8, "size": 2**20},
+    "items_per_second",
+    {"implementation": "tcmalloc", "bm_name": "AllocationThroughput"},
+    {"implementation": "libmalloc", "bm_name": "AllocationThroughput"}
+)
