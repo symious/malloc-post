@@ -5,6 +5,13 @@
 #include <cstdlib>
 #include <chrono>
 
+#ifdef __APPLE__
+#include <malloc/malloc.h>
+#include <mach/mach.h>
+#elif __linux__
+#include <malloc.h>
+#endif
+
 // Allocation payload: allocate and free N blocks of size sz.
 static void BM_AllocationThroughput(benchmark::State& state) {
     // Size of each allocation
@@ -82,5 +89,32 @@ BENCHMARK(BM_AllocationLatency)
     ->Threads(8)
     ->Threads(16)
     ->Threads(32);
+
+static void BM_AllocationOverhead(benchmark::State& state) {
+    size_t sz = size_t(state.range(0));
+
+    for (auto _ : state) {
+        void* ptr = malloc(sz);
+        if (!ptr) {
+            state.SkipWithError("malloc failed");
+            continue;
+        }
+
+        size_t actual = malloc_size(ptr);
+        size_t overhead = actual - sz;
+
+        free(ptr);
+
+        state.counters["requested_bytes"] = benchmark::Counter(sz);
+        state.counters["usable_bytes"] = benchmark::Counter(actual);
+        state.counters["overhead_bytes"] = benchmark::Counter(overhead);
+        state.counters["overhead_percent"] = benchmark::Counter(100.0 * overhead / sz);
+    }
+}
+
+BENCHMARK(BM_AllocationOverhead)
+    ->DenseRange(1, 1024, 1)
+    ->Iterations(1)
+    ->Threads(1);
 
 BENCHMARK_MAIN();
