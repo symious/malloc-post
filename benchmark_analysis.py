@@ -64,10 +64,14 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
             if y_label in entry:
                 grouped_data[entry[series_grouping]].append((entry[x_label], entry[y_label]))
 
-        for library, points in grouped_data.items():
+        for grouping_label, points in grouped_data.items():
             points.sort(key=lambda x: x[0])
             xs, ys = zip(*points)
-            ax.plot(xs, ys, marker='o', label=library)
+            if series_grouping == "threads":
+                grouping_suffix = " threads"
+            else:
+                grouping_suffix = ""
+            ax.plot(xs, ys, marker='o', label=f"{grouping_label}{grouping_suffix}")
 
         if facet_group:
             if facet_group == "size":
@@ -80,7 +84,14 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
             ax.set_title(plot_title.replace("_", " "))
 
         ax.set_xlabel(x_label.title())
-        ax.set_ylabel(y_label.replace("_", " ").title())
+        y_label_final = y_label.replace("_", " ").title()
+        if y_label == "real_time":
+            y_label_final = "Latency"
+        if "time" in y_label:
+            y_label_final = f"{y_label_final} ({bm['time_unit']})"
+        if y_label == "items_per_second":
+            y_label_final = "Throughput"
+        ax.set_ylabel(y_label_final)
         ax.set_xscale('log', base=2)
 
         all_grouped_values = [size for points in grouped_data.values() for size, _ in points]
@@ -108,6 +119,11 @@ plot_data("allocation_throughput", "implementation", "threads", "items_per_secon
 plot_data("allocation_throughput", "implementation", "size", "items_per_second", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput")
 plot_data("allocation_throughput_jemalloc", "threads", "size", "items_per_second", plot_filter=lambda b: b["implementation"] == "jemalloc" and b["bm_name"] == "AllocationThroughput")
 
+plot_data("allocation_latency", "implementation", "threads", "real_time", facet_group="size", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
+plot_data("allocation_latency", "implementation", "size", "real_time", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
+plot_data("allocation_latency_jemalloc", "threads", "size", "real_time", plot_filter=lambda b: b["implementation"] == "jemalloc" and b["bm_name"] == "AllocationLatency")
+
+
 def calculate_ratio(benchmark_filter, ratio_label, numerator_filter, denominator_filter):
     filtered_benchmarks = [bench for bench in benchmarks if all(bench[key] == value for key, value in benchmark_filter.items())]
     numerator_filter_lambda = lambda b: all(b[key] == value for key, value in numerator_filter.items())
@@ -132,3 +148,16 @@ calculate_ratio(
     {"implementation": "tcmalloc", "bm_name": "AllocationThroughput"},
     {"implementation": "libmalloc", "bm_name": "AllocationThroughput"}
 )
+calculate_ratio(
+    {"threads": 8, "size": 2**10},
+    "real_time",
+    {"implementation": "tcmalloc", "bm_name": "AllocationLatency"},
+    {"implementation": "libmalloc", "bm_name": "AllocationLatency"}
+)
+calculate_ratio(
+    {"threads": 8, "size": 2**20},
+    "real_time",
+    {"implementation": "tcmalloc", "bm_name": "AllocationLatency"},
+    {"implementation": "libmalloc", "bm_name": "AllocationLatency"}
+)
+
