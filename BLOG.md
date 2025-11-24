@@ -6,6 +6,11 @@ tags: cpp
 cover_image: 
 ---
 
+## Motiviation
+
+- Memory layout (heap vs ...)
+- how to use heap
+
 - jemalloc widely used in high performance databases (C*, ClickHouse)
 - compare different allocators
 - compare throughput
@@ -14,8 +19,64 @@ cover_image:
   - memory fragmentation
   - latency
 - compare tooling (debugging, profiling, etc.)
+  - heap profiling / telemetry API?
+  - memory debugging (double free)
 - compare jemalloc performance across different sizes with 8 threads
 - TODO https://github.com/google/benchmark/issues/178
+
+### TCMalloc
+
+- https://google.github.io/tcmalloc/overview.html
+- TC = "thread caching"
+- two modes: cache per thread, or cache per logical core
+- In both cases, these cache implementations allows TCMalloc to avoid requiring locks for most memory allocations and deallocations.
+
+### Malloc Stats
+
+```
+MALLOCSTATS=1 build/malloc-post-tcmalloc --benchmark_filter="BM_AllocationThroughput/2048/threads:8"
+```
+
+-------------------------------------------------------------------------------------------------
+Benchmark                                       Time             CPU   Iterations UserCounters...
+-------------------------------------------------------------------------------------------------
+BM_AllocationThroughput/2048/threads:8      88255 ns        87151 ns         8304 items_per_second=11.4743M/s
+------------------------------------------------
+MALLOC:          42592 (    0.0 MiB) Bytes in use by application
+MALLOC: +     12697600 (   12.1 MiB) Bytes in page heap freelist
+MALLOC: +      1905528 (    1.8 MiB) Bytes in central cache freelist
+MALLOC: +      1057024 (    1.0 MiB) Bytes in transfer cache freelist
+MALLOC: +      2123048 (    2.0 MiB) Bytes in thread cache freelists
+MALLOC: +      2621504 (    2.5 MiB) Bytes in malloc metadata
+MALLOC:   ------------
+MALLOC: =     20447296 (   19.5 MiB) Actual memory used (physical + swap)
+MALLOC: +            0 (    0.0 MiB) Bytes released to OS (aka unmapped)
+MALLOC:   ------------
+MALLOC: =     20447296 (   19.5 MiB) Virtual address space used
+MALLOC:
+MALLOC:            451              Spans in use
+MALLOC:              1              Thread heaps in use
+MALLOC:           8192              Tcmalloc page size
+------------------------------------------------
+
+
+### Heap profiling
+
+```
+HEAPPROFILE=malloc-post-tcmalloc.hprof build/malloc-post-tcmalloc --benchmark_filter="BM_AllocationThroughput/2048/threads:8"
+pprof --web gfs_master malloc-post-tcmalloc.hprof.0001.heap
+pprof --base=malloc-post-tcmalloc.hprof.0005.heap --web gfs_master malloc-post-tcmalloc.hprof.0001.heap
+```
+
+### Heap checking
+
+https://goog-perftools.sourceforge.net/doc/heap_checker.html
+
+```
+HEAPCHECK=normal ./build/malloc-post-leak-tcmalloc
+```
+
+Not working on MacOS
 
 ## Results
 
