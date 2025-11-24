@@ -94,14 +94,19 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
         ax.set_ylabel(y_label_final)
         if xscale == "log":
             ax.set_xscale('log', base=2)
+        if y_label == "overhead_bytes":
+            ax.set_yticks(np.linspace(0, 512, 17))
 
-        all_grouped_values = [size for points in grouped_data.values() for size, _ in points]
-        if all_grouped_values and xscale == "log":
-            min_size = min(all_grouped_values)
-            max_size = max(all_grouped_values)
-            min_exp = int(np.floor(np.log2(min_size)))
-            max_exp = int(np.ceil(np.log2(max_size)))
-            ticks = 2 ** np.arange(min_exp, max_exp + 1)
+        all_x_values = [x for points in grouped_data.values() for x, _ in points]
+        if all_x_values:
+            min_x = min(all_x_values)
+            max_x = max(all_x_values)
+            min_exp = int(np.floor(np.log2(min_x)))
+            max_exp = int(np.ceil(np.log2(max_x)))
+            if xscale == "log":
+                ticks = 2 ** np.arange(min_exp, max_exp + 1)
+            else:
+                ticks =  np.linspace(2 ** min_exp - 1, 2 ** max_exp, 9)
             ax.set_xticks(ticks)
 
         ax.legend()
