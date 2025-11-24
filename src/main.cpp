@@ -12,6 +12,28 @@
 #include <malloc.h>
 #endif
 
+size_t get_rss_bytes() {
+#ifdef __APPLE__
+    struct mach_task_basic_info info;
+    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
+                  (task_info_t)&info, &count) == KERN_SUCCESS) {
+        return info.resident_size;
+    }
+#elif __linux__
+    FILE* fp = fopen("/proc/self/statm", "r");
+    if (fp) {
+        unsigned long rss_pages;
+        if (fscanf(fp, "%*u %lu", &rss_pages) == 1) {
+            fclose(fp);
+            return rss_pages * sysconf(_SC_PAGESIZE);
+        }
+        fclose(fp);
+    }
+#endif
+    return 0;
+}
+
 // Allocation payload: allocate and free N blocks of size sz.
 static void BM_AllocationThroughput(benchmark::State& state) {
     // Size of each allocation
@@ -45,6 +67,9 @@ static void BM_AllocationThroughput(benchmark::State& state) {
             free(ptrs[i]);
         }
     }
+
+    size_t rss_size = get_rss_bytes();
+    state.counters["rss_size"] = benchmark::Counter(rss_size);
     state.SetItemsProcessed(state.iterations() * n);
 }
 

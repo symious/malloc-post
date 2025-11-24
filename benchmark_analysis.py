@@ -142,6 +142,8 @@ plot_data("allocation_latency", "implementation", "threads", "real_time", facet_
 plot_data("allocation_latency", "implementation", "size", "real_time", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
 plot_data("allocation_latency_tcmalloc", "threads", "size", "real_time", plot_filter=lambda b: b["implementation"] == "tcmalloc" and b["bm_name"] == "AllocationLatency")
 
+plot_data("allocation_rss", "implementation", "size", "rss_size", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput" and b["threads"] == 8)
+
 plot_data("allocation_overhead", "implementation", "size", "overhead_bytes", facet_group="implementation", plot_filter=lambda b: b["bm_name"] == "AllocationOverhead", marker=None, xscale=None)
 
 def calculate_ratio(benchmark_filter, ratio_label, numerator_filter, denominator_filter):
