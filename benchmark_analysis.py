@@ -60,7 +60,7 @@ implementation_colors = {
     "mimalloc": "#9467bd"
 }
 
-def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_group=None, plot_filter=None, marker="o", xscale="log", custom_xticks=True):
+def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_group=None, plot_filter=None, marker="o", xscale="log", yscale=None,custom_xticks=True):
     print(f"Plotting {plot_title}, series={series_grouping}, x={x_label}, y={y_label}, facet={facet_group}")
     if plot_filter is None:
         filtered_benchmarks = benchmarks.copy()
@@ -135,6 +135,8 @@ def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_g
         ax.set_ylabel(y_label_final)
         if xscale == "log":
             ax.set_xscale('log', base=2)
+        if yscale == "log":
+            ax.set_yscale('log', base=2)
         if y_label == "overhead_bytes":
             ax.set_yticks(np.linspace(0, 512, 17))
 
@@ -173,7 +175,9 @@ plot_data(benchmarks, "allocation_latency_tcmalloc", "threads", "size", "real_ti
 
 plot_data(benchmarks, "allocation_overhead", "implementation", "size", "overhead_bytes", facet_group="implementation", plot_filter=lambda b: b["bm_name"] == "AllocationOverhead", marker=None, xscale=None)
 
-plot_data(rss_results, "RSS Usage Per Thread", "implementation", "threads", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1)
+plot_data(rss_results, "RSS Usage Per Thread (1000 x 1KB allocations)", "implementation", "threads", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1 and b["pointers"] == 1000 and b["size"] == 1024)
+plot_data(rss_results, "RSS Usage Per Size (4 threads, 100 pointers)", "implementation", "size", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1 and b["pointers"] == 100 and b["threads"] == 4)
+plot_data(rss_results, "RSS Usage Per Pointers (4 threads, 1KB allocations)", "implementation", "pointers", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1 and b["size"] == 1024 and b["threads"] == 4)
 
 def calculate_ratio(benchmark_filter, ratio_label, numerator_filter, denominator_filter):
     filtered_benchmarks = [bench for bench in benchmarks if all(bench[key] == value for key, value in benchmark_filter.items())]

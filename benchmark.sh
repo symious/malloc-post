@@ -29,6 +29,12 @@ for executable in ${executable_prefix}*; do
   for threads in 1 2 4 8; do
     run_rss_benchmark ${threads} 1000 1024 10
   done
+  for iterations in 1000 2000 3000 4000 5000 6000 7000 8000 9000 10000; do
+    run_rss_benchmark 4 ${iterations} 1024 10
+  done
+  for size in 1024 2048 4096 8192 16384 32768 65536 131072 262144 524288 1048576; do
+    run_rss_benchmark 4 100 ${size} 10
+  done
 done
 
 python3 benchmark_analysis.py
