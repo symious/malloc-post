@@ -30,12 +30,38 @@ While the interface looks simple (in the end you are allocating, deallocating, s
 
 When comparing different allocators, there are several key factors to consider:
 
-- **Throughput** - how many operations per second can I perform
-- **Latency** - how long does it take to perform an operation
-- **Concurrency** - how well does the allocator handle concurrent access from multiple threads
-- **Memory overhead** - how much memory is used for bookkeeping or other overhead
-- **Memory fragmentation** - how much memory is wasted due to fragmentation over time
-- **Tooling** - how well does the allocator integrate with debugging and profiling tools
+- **Throughput** (ops/sec)
+- **Latency** - (sec/op)
+- **Concurrency** - (synchronization)
+- **Memory overhead** - (memory used per allocation)
+- **Memory fragmentation** (memory wasted over time)
+- **Tooling** (debugging, profiling, leak checking)
+
+## Allocator Architecture
+
+### `libmalloc`
+
+Apple's `libmalloc` architecture is designed around a scalable, multi-zone memory allocation system that uses several specialized zones for [different allocation sizes](https://github.com/apple-oss-distributions/libmalloc/blob/d876784c79e2869ff1cce519f46905c49117f9a6/src/thresholds.h) and purposes. The core allocator uses [mach memory APIs](https://developer.apple.com/documentation/kernel/mach) such as mach_vm_allocate and mach_vm_map to request memory from the OS. Libmalloc organizes memory into zones like the Nano zone for tiny allocations and the Scalable zone for larger ones. It includes data structures like magazines, free lists, bitmaps, and regions to efficiently manage blocks of memory.
+
+### `jemalloc`
+
+### `tcmalloc`
+
+### `mimalloc`
+
+### `hoard`
+
+## Comparison
+
+### Throughput
+
+### Latency
+
+### Memory Usage
+
+### Tooling
+
+## Summary and Conclusion
 
 
 
