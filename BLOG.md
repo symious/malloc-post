@@ -6,10 +6,38 @@ tags: cpp
 cover_image: 
 ---
 
-## Motiviation
+## What Are Memory Allocators?
 
-- Memory layout (heap vs ...)
-- how to use heap
+Applications need memory to store data and code during runtime. Memory can be allocated statically (fixed size at compile time), or dynamically (at runtime). Dynamic memory allocation is crucial when the memory size needed varies during program execution, which is the case for most modern applications.
+
+The stack and the heap are two key memory regions during program execution. Stack allocation is used for function calls and local variables and it happens automatically. The stack allocation lifecycle is tied to the lifecycle of the function. The heap is used for dynamic memory allocation. In non-garbage-collected languages like C++, the programmer is responsible for managing the heap, while in garbage-collected languages like Java, the heap is managed automatically.
+
+In many cases, heap allocation and de-allocation is implemented via a memory allocator, which implements functions like `malloc` and `free`. Those generic functions are part of the C standard library, and are implemented by `libc`, which on Linux, is `glibc` by default for most installations. On MacOS, `libmalloc` is the default implementation.
+
+In [Writing My Own Dynamic Memory Management](https://dev.to/frosnerd/writing-my-own-dynamic-memory-management-361g) I attempted to write a very simple allocator myself for my own operating system. Note that modern allocators are very complex, combining advanced data structures and algorithms achieve high performance in modern concurrent applications.
+
+Especially in performance critical applications, such as databases, webservers, and game engines, the choice of memory allocator can have a significant impact on performance. I wanted to learn more about the different allocators available. In this blog post we are going to compare a few well-known allocators on MacOS:
+
+- [`libmalloc`](https://github.com/apple-opensource/libmalloc) - The default allocator on MacOS, developed by Apple.
+- [`jemalloc`](https://github.com/jemalloc/jemalloc) - Created by Jason Evans originally for FreeBSD to address fragmentation and scaling issues, jemalloc is a scalable allocator widely adopted in performance-critical applications including Firefox and Facebook.
+- [`tcmalloc`](https://github.com/google/tcmalloc) - Developed by Google as part of the [Google Performance Tools](https://github.com/gperftools/gperftools) to enhance multithreaded allocation speed and reduce lock contention using thread-local or core-local caches.
+- [`mimalloc`](https://github.com/microsoft/mimalloc) - Developed by Microsoft Research as a modern general-purpose allocator, focusing on locality and reducing contention with innovations like page-local free lists and free list sharding for performance gains.
+- [`hoard`](https://github.com/emeryberger/Hoard) - Designed by Emery Berger and his team at the University of Massachusetts to reduce memory fragmentation and contention in multithreaded systems by partitioning heaps per thread, introduced in the early 2000s as a research-driven allocator.
+
+## How Do Memory Allocators Differ?
+
+While the interface looks simple (in the end you are allocating, deallocating, sometimes resizing memory), the implementations of those allocators differ significantly. Different allocators have different performance characteristics, and are better suited for different workloads and computer architectures.
+
+When comparing different allocators, there are several key factors to consider:
+
+- **Throughput** - how many operations per second can I perform
+- **Latency** - how long does it take to perform an operation
+- **Concurrency** - how well does the allocator handle concurrent access from multiple threads
+- **Memory overhead** - how much memory is used for bookkeeping or other overhead
+- **Memory fragmentation** - how much memory is wasted due to fragmentation over time
+- **Tooling** - how well does the allocator integrate with debugging and profiling tools
+
+
 
 - jemalloc widely used in high performance databases (C*, ClickHouse)
 - compare different allocators
