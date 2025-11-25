@@ -46,7 +46,23 @@ foreach(MALLOC ${MALLOC_IMPLEMENTATIONS})
 endforeach()
 
 # Build with system allocator fallback target name explicitly defined
-set(EXE_NAME "${PROJECT_NAME}-libmalloc")
+set(EXE_NAME "${PROJECT_NAME}-benchmark-libmalloc")
 add_executable(${EXE_NAME} src/main.cpp)
 target_link_libraries(${EXE_NAME} PRIVATE benchmark::benchmark pthread)
 target_include_directories(${EXE_NAME} PRIVATE include)
+
+# Build leak test executables with each malloc implementation
+foreach(MALLOC ${MALLOC_IMPLEMENTATIONS})
+    set(RSS_EXE_NAME "${PROJECT_NAME}-rss-${MALLOC}")
+    add_executable(${RSS_EXE_NAME} src/rss.cpp)
+
+    if(${MALLOC}_LIBRARY)
+        target_link_libraries(${RSS_EXE_NAME} PRIVATE ${${MALLOC}_LIBRARY})
+    endif()
+    target_include_directories(${RSS_EXE_NAME} PRIVATE include)
+endforeach()
+
+# Build leak test with system allocator
+set(RSS_EXE_NAME "${PROJECT_NAME}-rss-libmalloc")
+add_executable(${RSS_EXE_NAME} src/rss.cpp)
+target_include_directories(${RSS_EXE_NAME} PRIVATE include)

@@ -1,4 +1,6 @@
+import csv
 import json
+import math
 import os
 import re
 import matplotlib.pyplot as plt
@@ -6,6 +8,7 @@ import numpy as np
 from collections import defaultdict
 
 benchmarks = []
+rss_results = []
 results_folder = 'results'
 
 for filename in os.listdir(results_folder):
@@ -25,16 +28,39 @@ for filename in os.listdir(results_folder):
                 }
                 # {'bm_name': 'AllocationThroughput', 'implementation': 'system', 'size': 8192, 'name': 'BM_MallocFree_Multithreaded/8192/threads:8', 'family_index': 0, 'per_family_instance_index': 15, 'run_name': 'BM_MallocFree_Multithreaded/8192/threads:8', 'run_type': 'iteration', 'repetitions': 1, 'repetition_index': 0, 'threads': 8, 'iterations': 5712, 'real_time': 137789.86525395754, 'cpu_time': 137266.98179271698, 'time_unit': 'ns', 'items_per_second': 7285073.124941815}
                 benchmarks.append(enriched_benchmark)
+    elif filename.endswith(".csv"):
+        filepath = os.path.join(results_folder, filename)
+        print(f"Loading {filepath}")
+        file_name = os.path.splitext(filename)[0]
+        # ${MALLOC}_1_1000_1024_10.csv
+        implementation, threads, pointers, size, iterations = file_name.split("_")
+        with open(filepath, 'r', encoding='utf-8') as f:
+            csv_reader = csv.reader(f)
+            for row in csv_reader:
+                # skip header
+                if row[0] == "elapsed_ms":
+                    continue
+                if len(row) == 2:
+                    rss_results.append({
+                        "seconds": int(row[0]) / 1000,
+                        "rss": int(row[1]) / 1024 / 1024,
+                        "implementation": implementation,
+                        "threads": int(threads),
+                        "pointers": int(pointers),
+                        "size": int(size),
+                        "iterations": int(iterations),
+                    })
 
-def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, plot_filter=None, marker="o", xscale="log"):
-    implementation_colors = {
-        "libmalloc": "#1f77b4",
-        "hoard": "#ff7f0e",
-        "jemalloc": "#2ca02c",
-        "tcmalloc": "#d62728",
-        "mimalloc": "#9467bd"
-    }
 
+implementation_colors = {
+    "libmalloc": "#1f77b4",
+    "hoard": "#ff7f0e",
+    "jemalloc": "#2ca02c",
+    "tcmalloc": "#d62728",
+    "mimalloc": "#9467bd"
+}
+
+def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_group=None, plot_filter=None, marker="o", xscale="log", custom_xticks=True):
     print(f"Plotting {plot_title}, series={series_grouping}, x={x_label}, y={y_label}, facet={facet_group}")
     if plot_filter is None:
         filtered_benchmarks = benchmarks.copy()
@@ -94,7 +120,7 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
                 facet_val_formatted = facet_val
             ax.set_title(f"{facet_group}: {facet_val_formatted}")
         else:
-            ax.set_title(plot_title.replace("_", " ").title())
+            ax.set_title(plot_title)
 
         ax.set_xlabel(x_label.title())
         y_label_final = y_label.replace("_", " ").title()
@@ -102,6 +128,8 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
             y_label_final = "Latency"
         if "time" in y_label:
             y_label_final = f"{y_label_final} ({bm['time_unit']})"
+        if y_label == "rss":
+            y_label_final = "RSS (MB)"
         if y_label == "items_per_second":
             y_label_final = "Throughput"
         ax.set_ylabel(y_label_final)
@@ -110,17 +138,18 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
         if y_label == "overhead_bytes":
             ax.set_yticks(np.linspace(0, 512, 17))
 
-        all_x_values = [x for points in grouped_data.values() for x, _ in points]
-        if all_x_values:
-            min_x = min(all_x_values)
-            max_x = max(all_x_values)
-            min_exp = int(np.floor(np.log2(min_x)))
-            max_exp = int(np.ceil(np.log2(max_x)))
-            if xscale == "log":
-                ticks = 2 ** np.arange(min_exp, max_exp + 1)
-            else:
-                ticks =  np.linspace(2 ** min_exp - 1, 2 ** max_exp, 9)
-            ax.set_xticks(ticks)
+        if custom_xticks:
+            all_x_values = [x for points in grouped_data.values() for x, _ in points]
+            if all_x_values:
+                min_x = min(all_x_values)
+                max_x = max(all_x_values)
+                min_exp = int(np.floor(np.log2(min_x)))
+                max_exp = int(np.ceil(np.log2(max_x)))
+                if xscale == "log":
+                    ticks = 2 ** np.arange(min_exp, max_exp + 1)
+                else:
+                    ticks =  np.linspace(2 ** min_exp - 1, 2 ** max_exp, 9)
+                ax.set_xticks(ticks)
 
         ax.legend()
         ax.grid(True, which="both", ls="--")
@@ -130,21 +159,21 @@ def plot_data(plot_title, series_grouping, x_label, y_label, facet_group=None, p
         axes[idx].set_visible(False)
 
     plt.tight_layout()
-    plt.savefig(f"plots/{plot_title}_{series_grouping}_{x_label}_{y_label}_results.png", dpi=300)
+    plt.savefig(f"plots/{plot_title.replace(' ', '_').lower()}_{series_grouping}_{x_label}_{y_label}_results.png", dpi=300)
     plt.close()
 
 
-plot_data("allocation_throughput", "implementation", "threads", "items_per_second", facet_group="size", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput")
-plot_data("allocation_throughput", "implementation", "size", "items_per_second", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput")
-plot_data("allocation_throughput_tcmalloc", "threads", "size", "items_per_second", plot_filter=lambda b: b["implementation"] == "tcmalloc" and b["bm_name"] == "AllocationThroughput")
+plot_data(benchmarks, "allocation_throughput", "implementation", "threads", "items_per_second", facet_group="size", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput")
+plot_data(benchmarks, "allocation_throughput", "implementation", "size", "items_per_second", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput")
+plot_data(benchmarks, "allocation_throughput_tcmalloc", "threads", "size", "items_per_second", plot_filter=lambda b: b["implementation"] == "tcmalloc" and b["bm_name"] == "AllocationThroughput")
 
-plot_data("allocation_latency", "implementation", "threads", "real_time", facet_group="size", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
-plot_data("allocation_latency", "implementation", "size", "real_time", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
-plot_data("allocation_latency_tcmalloc", "threads", "size", "real_time", plot_filter=lambda b: b["implementation"] == "tcmalloc" and b["bm_name"] == "AllocationLatency")
+plot_data(benchmarks, "allocation_latency", "implementation", "threads", "real_time", facet_group="size", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
+plot_data(benchmarks, "allocation_latency", "implementation", "size", "real_time", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
+plot_data(benchmarks, "allocation_latency_tcmalloc", "threads", "size", "real_time", plot_filter=lambda b: b["implementation"] == "tcmalloc" and b["bm_name"] == "AllocationLatency")
 
-plot_data("allocation_rss", "implementation", "size", "rss_size", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput" and b["threads"] == 8)
+plot_data(benchmarks, "allocation_overhead", "implementation", "size", "overhead_bytes", facet_group="implementation", plot_filter=lambda b: b["bm_name"] == "AllocationOverhead", marker=None, xscale=None)
 
-plot_data("allocation_overhead", "implementation", "size", "overhead_bytes", facet_group="implementation", plot_filter=lambda b: b["bm_name"] == "AllocationOverhead", marker=None, xscale=None)
+plot_data(rss_results, "RSS Usage Per Thread", "implementation", "threads", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1)
 
 def calculate_ratio(benchmark_filter, ratio_label, numerator_filter, denominator_filter):
     filtered_benchmarks = [bench for bench in benchmarks if all(bench[key] == value for key, value in benchmark_filter.items())]
@@ -182,4 +211,6 @@ calculate_ratio(
     {"implementation": "tcmalloc", "bm_name": "AllocationLatency"},
     {"implementation": "libmalloc", "bm_name": "AllocationLatency"}
 )
+
+
 

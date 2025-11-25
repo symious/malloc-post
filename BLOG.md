@@ -27,6 +27,8 @@ cover_image:
 ### TCMalloc
 
 - https://google.github.io/tcmalloc/overview.html
+- https://google.github.io/tcmalloc/design.html
+- https://stackoverflow.com/questions/76102375/what-are-rseqs-restartable-sequences-and-how-to-use-them
 - TC = "thread caching"
 - two modes: cache per thread, or cache per logical core
 - In both cases, these cache implementations allows TCMalloc to avoid requiring locks for most memory allocations and deallocations.
@@ -82,6 +84,20 @@ Not working on MacOS
 
 - Ratio for {'threads': 8, 'size': 1024} {'implementation': 'tcmalloc'} / {'implementation': 'libmalloc'}: 1.3716038584770054 items_per_second/items_per_second
 - Ratio for {'threads': 8, 'size': 1048576} {'implementation': 'tcmalloc'} / {'implementation': 'libmalloc'}: 20.009644120772688 items_per_second/items_per_second
+
+## Memory Overhead
+
+- Two types of overhead:
+  - allocation overhead when allocation size is not aligned with internal page size
+  - bookkeeping / synchronization overhead (can be per thread, per core, per pointer)
+
+Allocation overhead varies a lot between implementations, ranging from a static 16 bytes only (liballoc), to a whopping 100% of the allocated size (hoard).
+
+![](plots/allocation_overhead_implementation_size_overhead_bytes_results.png)
+
+- All allocators but liballoc have stable overhead with an increasing number of threads
+- Overall memory overhead varies significantly, with mimalloc having the lower overhead
+![](plots/per_thread_cache_implementation_threads_rss_results.png)
 
 
 For a database, the allocator choice affects throughput, latency tails, memory footprint, and operational behavior over long uptimes, so the key is to match the allocator’s behavior to your workload and SLOs.​
