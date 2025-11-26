@@ -19,7 +19,7 @@ for filename in os.listdir(results_folder):
             data = json.load(f)
             for bm in data["benchmarks"]:
                 bm_name = re.search(r"BM_(.+?)/", bm["name"]).group(1)
-                implementation = os.path.splitext(filename)[0]
+                implementation = os.path.splitext(filename)[0].split("_")[0]
                 enriched_benchmark = {
                     "bm_name": bm_name,
                     "implementation": implementation,
@@ -91,6 +91,11 @@ def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_g
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4 * n_rows), squeeze=False)
     axes = axes.flatten()
 
+    # get min and max y values based on all series, not just from this group
+    all_y_values = [entry[y_label] for entry in filtered_benchmarks if y_label in entry]
+    min_y = min(all_y_values)
+    max_y = max(all_y_values)
+
     for idx, (facet_val, facet_entries) in enumerate(facet_data.items()):
         ax = axes[idx]
         grouped_data = defaultdict(list)
@@ -119,6 +124,7 @@ def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_g
             else:
                 facet_val_formatted = facet_val
             ax.set_title(f"{facet_group}: {facet_val_formatted}")
+            ax.set_ylim([min_y, max_y + (max_y - min_y) * 0.05])
         else:
             ax.set_title(plot_title)
 
@@ -130,6 +136,7 @@ def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_g
             y_label_final = f"{y_label_final} ({bm['time_unit']})"
         if "percent" in y_label:
             y_label_final = f"{y_label_final} (%)"
+            ax.set_ylim([min_y, max_y + 10])
         if y_label == "rss":
             y_label_final = "RSS (MB)"
         if y_label == "items_per_second":
@@ -165,9 +172,6 @@ def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_g
     plt.close()
 
 
-plot_data(benchmarks, "allocation_throughput", "implementation", "threads", "items_per_second", facet_group="size", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput")
-plot_data(benchmarks, "allocation_throughput", "implementation", "size", "items_per_second", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput")
-plot_data(benchmarks, "allocation_throughput_tcmalloc", "threads", "size", "items_per_second", plot_filter=lambda b: b["implementation"] == "tcmalloc" and b["bm_name"] == "AllocationThroughput")
 
 plot_data(benchmarks, "allocation_latency", "implementation", "threads", "real_time", facet_group="size", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
 plot_data(benchmarks, "allocation_latency", "implementation", "size", "real_time", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
@@ -179,6 +183,8 @@ plot_data(benchmarks, "Allocation Overhead (regular)", "implementation", "size",
 plot_data(rss_results, "RSS Usage Per Thread (1000 x 1KB allocations)", "implementation", "threads", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1 and b["pointers"] == 1000 and b["size"] == 1024)
 plot_data(rss_results, "RSS Usage Per Size (4 threads, 100 pointers)", "implementation", "size", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1 and b["pointers"] == 100 and b["threads"] == 4)
 plot_data(rss_results, "RSS Usage Per Pointers (4 threads, 1KB allocations)", "implementation", "pointers", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1 and b["size"] == 1024 and b["threads"] == 4)
+plot_data(benchmarks, "Allocation Throughput", "implementation", "size", "items_per_second", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput" and b["threads"] in {1, 4, 8})
+plot_data(benchmarks, "Allocation Throughput per Thread (1KB)", "implementation", "threads", "items_per_second", plot_filter=lambda b: b["size"] == 2**10 and b["bm_name"] == "AllocationThroughput")
 
 def calculate_ratio(benchmark_filter, ratio_label, numerator_filter, denominator_filter):
     filtered_benchmarks = [bench for bench in benchmarks if all(bench[key] == value for key, value in benchmark_filter.items())]

@@ -38,13 +38,12 @@ static void BM_AllocationThroughput(benchmark::State& state) {
 
 BENCHMARK(BM_AllocationThroughput)
     ->RangeMultiplier(2)
-    ->Range(1 << 6, 1 << 20)
+    ->Range(1 << 1, 1 << 25)
+    ->Iterations(1000)
     ->Threads(1)
     ->Threads(2)
     ->Threads(4)
-    ->Threads(8)
-    ->Threads(16)
-    ->Threads(32);
+    ->Threads(8);
 
 static void BM_AllocationLatency(benchmark::State& state) {
     size_t sz = size_t(state.range(0));
@@ -68,15 +67,13 @@ static void BM_AllocationLatency(benchmark::State& state) {
 
 BENCHMARK(BM_AllocationLatency)
     ->RangeMultiplier(2)
-    ->Range(1 << 6, 1 << 20)
-    ->Iterations(100000)
+    ->Range(1 << 1, 1 << 25)
+    ->Iterations(1000)
     ->UseManualTime()
     ->Threads(1)
     ->Threads(2)
     ->Threads(4)
-    ->Threads(8)
-    ->Threads(16)
-    ->Threads(32);
+    ->Threads(8);
 
 static void BM_AllocationOverhead(benchmark::State& state) {
     size_t sz = size_t(state.range(0));

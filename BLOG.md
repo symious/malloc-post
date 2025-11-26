@@ -97,7 +97,49 @@ The workload (allocation size, frequency, number of threads, etc.) impacts these
 
 ### Throughput
 
-TODO restart benchmark with every configuration to ensure malloc internal state is fresh and there is no fragmentation affecting the later runs
+```cpp
+static void BM_AllocationThroughput(benchmark::State& state) {
+    size_t sz = size_t(state.range(0));
+    size_t n = 1000;
+
+    std::vector<void*> ptrs(n);
+
+    for (auto _ : state) {
+        std::mt19937 rng(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+        std::uniform_int_distribution<int> dist(0, n - 1);
+
+        for (size_t i = 0; i < n; ++i) {
+            ptrs[i] = malloc(sz);
+            if (!ptrs[i]) state.SkipWithError("malloc failed");
+        }
+        benchmark::DoNotOptimize(ptrs);
+
+        for (size_t i = 0; i < n; ++i) {
+            int j = dist(rng);
+            free(ptrs[j]);
+            ptrs[j] = malloc(sz);
+        }
+
+        for (size_t i = 0; i < n; ++i) {
+            free(ptrs[i]);
+        }
+    }
+
+    state.SetItemsProcessed(state.iterations() * n);
+}
+```
+
+We expect the allocation throughput per thread to decrease with increased parallelism due to the increased synchronization overhead. When plotting the throughput (average "items processed" per second per thread) for allocation sizes of 1KB, we can see that the throughput decreases across the board:
+
+![](plots/allocation_throughput_per_thread_(1kb)_implementation_threads_items_per_second_results.png)
+
+We can also see that `hoard` has the highest throughput, more than 2x of what `mimalloc` achieves. This is only one data point, however, as we were looking at 1KB allocations. Let's look at the throughput for different allocation sizes and different number of threads:
+
+![](plots/allocation_throughput_implementation_size_items_per_second_results.png)
+
+As you can see, the different allocators have vastly different throughput characteristics across the different workloads. While both `hoard` and `mimalloc` perform very well for small allocations, their throughput decreases rapidly for allocations > 1KB. `tcmalloc` takes the lead for allocations > 1KB and maintains a steady throughput up to 32KB (2<sup>15</sup> bytes). `jemalloc` has the lowest throughput for smaller allocation sizes, but maintains a decent throughput especially with increased parallelism compared to `mimalloc`, `hoard`, and `libmalloc`.
+
+TODO why?
 
 ### Latency
 

@@ -4,12 +4,25 @@ set -euo pipefail
 
 cmake --build build
 
+
+run_allocation_throughput_benchmark() {
+  local size=$1
+  local threads=$2
+  echo "Running allocation throughput benchmark for ${MALLOC} with ${size} size, ${threads} threads"
+  ${executable} --benchmark_filter="BM_AllocationThroughput/${size}/iterations:1000/threads:${threads}" \
+    --benchmark_out="results/${MALLOC}_AllocationThroughput_${size}_${threads}.json" \
+    > /dev/null
+}
+
 executable_prefix="./build/malloc-post-benchmark-"
 
 for executable in ${executable_prefix}*; do
   MALLOC="${executable#./build/malloc-post-benchmark-}"
-  echo "Running benchmarks for ${MALLOC}"
-  ${executable} --benchmark_out=results/${MALLOC}.json > /dev/null #results/${MALLOC}.txt
+  for threads in 1 2 4 8; do
+    for size in {1..22}; do
+      run_allocation_throughput_benchmark $((2**size)) ${threads}
+    done
+  done
 done
 
 run_rss_benchmark() {
