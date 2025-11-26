@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <malloc/malloc.h>
+#include <iostream>
 
 static void BM_AllocationThroughput(benchmark::State& state) {
     size_t sz = size_t(state.range(0));
@@ -121,5 +122,21 @@ BENCHMARK(BM_AllocationOverhead)
     ->DenseRange(536870912, 1073741824, 1048576)
     ->Iterations(1)
     ->Threads(1);
+
+static void BM_IntegerAddition(benchmark::State& state) {
+    for (auto _ : state) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        benchmark::DoNotOptimize(1 + 2);
+    }
+    state.counters["counter"] = benchmark::Counter(1);
+    state.counters["counter_rate"] = benchmark::Counter(1, benchmark::Counter::kIsRate);
+    state.counters["counter_thread_rate"] = benchmark::Counter(1, benchmark::Counter::kAvgThreadsRate);
+}
+
+BENCHMARK(BM_IntegerAddition)
+    ->Threads(1)
+    ->Threads(10)
+    ->Iterations(1)
+    ->UseRealTime();
 
 BENCHMARK_MAIN();
