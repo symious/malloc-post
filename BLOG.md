@@ -28,22 +28,62 @@ Especially in performance critical applications, such as databases, webservers, 
 
 ### `libmalloc`
 
-- Multiple zones for [different allocation sizes](https://github.com/apple-oss-distributions/libmalloc/blob/d876784c79e2869ff1cce519f46905c49117f9a6/src/thresholds.h) and allocation strategies (e.g. Nano zone optimized for tiny allocations).
+- Multiple zones for different allocation sizes and allocation strategies.
 - Use of metadata associated with each block for bookkeeping, including checksums for added memory corruption protection.
 - Thread-local caching with per-thread magazines to reduce contention and improve concurrency.
 - Allocation algorithms that search free lists or cache to find suitable blocks, fall back to allocating new memory regions if needed.
 
-
-
 ### `jemalloc`
 
-`jemalloc` is a scalable memory allocator designed to reduce fragmentation and efficiently support multithreaded environments. Its architecture is built around the concepts of arenas, thread caches, size classes, and memory chunks organized in a hierarchical manner to maximize concurrency and minimize contention.
+- Uses arenas (independent allocation pools) reduce lock contention by allowing threads to allocate from different arenas concurrently. Each arena manages its own memory to avoid synchronization bottlenecks.
+- Thread-local caching to serve small allocations quickly without accessing the central arenas, which improves allocation speed and scalability.
+- Organizes allocations into predefined size classes. This organization reduces fragmentation by rounding requests up to the nearest size class and managing memory in runs dedicated to a single size class.
+- Memory is allocated in larger extents (virtual memory segments), which are subdivided into smaller regions or blocks corresponding to each size class. This hierarchical design aids efficient memory reuse and reduces fragmentation.
+- Delays returning memory to the OS to amortize overheads and groups related allocations to optimize memory layout and reduce fragmentation.
 
 ### `tcmalloc`
 
+- Per-CPU/per-thread Caches: Each CPU or thread has a local cache to serve most allocation and deallocation requests quickly without locking global structures. This reduces contention dramatically by localizing frequent operations.
+- Transfer caches act as an intermediate layer between per-thread caches and the central cache, designed to batch cache line transfers to minimize synchronization overhead.
+- A central cache maintains free lists of memory blocks organized by size classes. It serves requests from the transfer cache and pulls memory from the backend heap if needed.
+- The backend heap allocator manages large contiguous chunks of memory called spans, which are divided into smaller blocks for allocation. It requests memory from the OS and handles returning unused memory back to the system.
+- Allocation requests are rounded up to the nearest size class to reduce fragmentation and speed indexing into caches and free lists.
+
+Additional Details:
+The allocator uses metadata headers per size class with pointers to free objects for rapid allocation.
+
+It aims to reduce fragmentation and increase object reuse by managing block sizes carefully.
+
+TCMalloc's design effectively balances fast allocation, low fragmentation, and efficient multi-threaded operation.
+
+It is widely used in Google's production infrastructure and large-scale systems requiring robust, scalable memory management.
+
 ### `mimalloc`
 
+- Instead of a single large free list per size class, `mimalloc` uses many smaller free lists per `mimalloc` page (usually 64KiB) which contain blocks of a single size class. This significantly improves locality, reduces fragmentation, and increases allocation speed by keeping related allocations close in memory.
+- Each thread can allocate from its own heap, but it can also safely free memory owned by other threads. Internally, a heap contains segments, and each segment contains multiple pages dedicated to blocks of the same size class.
+- No locks, atomic operations only: To improve concurrency and scalability, `mimalloc` avoids locks by using atomic operations. It also separates free lists for frees performed by the owning thread and frees done by other threads, reducing contention drastically.
+- When a page becomes empty, it is marked back to the OS as unused (reset or decommitted), reducing real memory usage and fragmentation.
+- Supports advanced security modes that add guard pages around allocations, randomized allocation orders, encoded free list pointers, and guard page protections to mitigate heap overflow attacks and detect corruption.
+- Supports multiple heaps that can be created and destroyed efficiently, allowing objects allocated from different heaps to be managed collectively.
+
 ### `hoard`
+
+Per-processor heaps: Each processor (or thread) has its own private heap where it allocates memory from. This reduces lock contention since allocation and freeing mostly operate on the local heap.
+
+Global heap: In addition to private heaps, there is a global heap used as a shared resource to balance memory usage across processors by transferring memory blocks (superblocks) between private heaps and the global heap.
+
+Superblocks: Memory is managed in large chunks called superblocks (e.g., megabyte-sized), subdivided into smaller blocks of the same size class. Each superblock is owned by one heap and serves its allocation requests.
+
+Memory balance and transfer discipline: When a private heap becomes too empty or too full, superblocks are transferred to or from the global heap to maintain balanced memory usage and avoid excessive fragmentation.
+
+Avoiding false sharing: Hoard ensures that superblocks are allocated and reused mostly by the same processor to prevent false sharing at the cache-line level, which is a common concurrency performance problem.
+
+Allocation bins: Each heap organizes superblocks into bins based on their fullness, favoring allocation from superblocks that are nearly full to improve locality and reduce fragmentation.
+
+Large allocations: Objects larger than half a superblock are allocated directly from the OS virtual memory system.
+
+
 
 ## Comparison
 
@@ -62,6 +102,8 @@ When comparing different allocators, there are several key factors to consider:
 
 ### Throughput
 
+TODO restart benchmark with every configuration to ensure malloc internal state is fresh and there is no fragmentation affecting the later runs
+
 ### Latency
 
 ### Memory Usage
@@ -70,9 +112,13 @@ When comparing different allocators, there are several key factors to consider:
   - allocation overhead when allocation size is not aligned with internal page size
   - bookkeeping / synchronization overhead (can be per thread, per core, per pointer)
 
-Allocation overhead varies a lot between implementations, ranging from a static 16 bytes only (liballoc), to a whopping 100% of the allocated size (hoard).
+Allocation overhead varies a lot between implementations. You can see zones / size class boundaries in the overhead. libmalloc: https://github.com/apple-oss-distributions/libmalloc/blob/d876784c79e2869ff1cce519f46905c49117f9a6/src/thresholds.h
 
-TODO check with even larger sizes
+TINY zone handles allocations up to 1008 bytes (~ 2<sup>10</sup> bytes).
+SMALL zone handles allocations from above TINY up to 32 KB (2<sup>15</sup> bytes).
+MEDIUM zone handles allocations from above SMALL up to 8 MB (2<sup>23</sup> bytes).
+LARGE zone handles allocations beyond the MEDIUM threshold.
+
 
 ```cpp
 void* ptr = malloc(sz);
@@ -82,7 +128,8 @@ size_t overhead = actual - sz;
 
 ![](plots/allocation_overhead_implementation_size_overhead_bytes_results.png)
 
-- All allocators but liballoc have stable overhead with an increasing number of threads
+
+- 
 - Overall memory overhead varies significantly, with mimalloc having the lower overhead
   ![](plots/per_thread_cache_implementation_threads_rss_results.png)
 
