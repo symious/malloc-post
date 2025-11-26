@@ -93,9 +93,39 @@ While the interface looks simple, the implementations of those allocators differ
 - **Memory usage** - (overhead and fragmentation)
 - **Tooling** (debugging, profiling, leak checking, ...)
 
-The workload (allocation size, frequency, number of threads, etc.) impacts these KPIs, so it is important to benchmark your specific workload. Let's look into the different KPIs in greater detail.
+The workload (allocation size, frequency, number of threads, etc.) impacts these KPIs, so it is important to benchmark your specific workload. I'm running the benchmarks using Google Benchmark `v1.9.4` on my Nov 2023 MacBook Pro (M3) with MacOS `15.6.1`, compiled with Apple `clang-1700.0.13.5`. You can find the [source code](https://github.com/FRosner/malloc-post) on GitHub.
+
+[TODO]
+
+Note that we cannot actively "reset" the allocator between each benchmark run. To avoid interactions between runs, we'll use a bash script to run the individual benchmarks in a loop.
+
+```bash
+run_allocation_throughput_benchmark() {
+  local size=$1
+  local threads=$2
+  echo "Running allocation throughput benchmark for ${MALLOC} with ${size} size, ${threads} threads"
+  ${executable} --benchmark_filter="BM_AllocationThroughput/${size}/iterations:1000/threads:${threads}" \
+    --benchmark_out="results/${MALLOC}_AllocationThroughput_${size}_${threads}.json" \
+    > /dev/null
+}
+
+executable_prefix="./build/malloc-post-benchmark-"
+
+for executable in ${executable_prefix}*; do
+  MALLOC="${executable#./build/malloc-post-benchmark-}"
+  for threads in 1 2 4 8; do
+    for size in {1..22}; do
+      run_allocation_throughput_benchmark $((2**size)) ${threads}
+    done
+  done
+done
+```
+
+Next, let's look into the different KPIs in greater detail.
 
 ### Throughput
+
+To measure throughput, we design a benchmark that within each iteration, allocates memory of a given size for a fixed number of pointers (1000), then frees and reallocates memory for 1000 random pointers, and finally frees all pointers. This yields a total of 2000 memory allocations and frees per iteration. For the throughput counter `SetItemsProcessed` we treat two `malloc` plus two `free` calls as one "item".
 
 ```cpp
 static void BM_AllocationThroughput(benchmark::State& state) {
@@ -127,6 +157,19 @@ static void BM_AllocationThroughput(benchmark::State& state) {
 
     state.SetItemsProcessed(state.iterations() * n);
 }
+```
+
+We can then run the benchmark for different allocation sizes and different number of threads:
+
+```cpp
+BENCHMARK(BM_AllocationThroughput)
+    ->RangeMultiplier(2)
+    ->Range(1 << 1, 1 << 25)
+    ->Iterations(1000)
+    ->Threads(1)
+    ->Threads(2)
+    ->Threads(4)
+    ->Threads(8);
 ```
 
 We expect the allocation throughput per thread to decrease with increased parallelism due to the increased synchronization overhead. When plotting the throughput (average "items processed" per second per thread) for allocation sizes of 1KB, we can see that the throughput decreases across the board:
