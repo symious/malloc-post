@@ -14,7 +14,11 @@ The stack and the heap are two key memory regions during program execution. Stac
 
 In many cases, heap allocation and de-allocation is implemented via a memory allocator, which implements functions like `malloc` and `free`. Those generic functions are part of the C standard library, and are implemented by `libc`, which on Linux, is `glibc` by default for most installations. On MacOS, `libmalloc` is the default implementation.
 
-In [Writing My Own Dynamic Memory Management](https://dev.to/frosnerd/writing-my-own-dynamic-memory-management-361g) I attempted to write a very simple allocator myself for my own operating system. Note that modern allocators are very complex, combining advanced data structures and algorithms achieve high performance in modern concurrent applications.
+In [Writing My Own Dynamic Memory Management](https://dev.to/frosnerd/writing-my-own-dynamic-memory-management-361g) I attempted to write a very simple allocator for my own operating system based on a doubly linked list. The following animation shows how the available heap is managed by the allocator:
+
+{% youtube CVXtq77b4Xc %}
+
+Efficient memory allocation is a complex problem, especially on modern computer architectures. Modern allocators combine advanced data structures and algorithms to achieve high performance in concurrent environments.
 
 Especially in performance critical applications, such as databases, webservers, and game engines, the choice of memory allocator can have a significant impact on performance. I wanted to learn more about the different allocators available. In this blog post we are going to compare a few well-known allocators on MacOS:
 
@@ -26,37 +30,38 @@ Especially in performance critical applications, such as databases, webservers, 
 
 ## Allocator Architecture
 
+### Overview
+
+All modern memory allocators share common architectural concepts to manage dynamic memory efficiently and safely. Allocation requests can come in different sizes, ranging from a few bytes to megabytes or even gigabytes. Allocators need to be equipped with strategies to handle different allocation sizes with minimal overhead and fragmentation. Commonly this is achieved by using some form of segmentation based on the requested size.
+
+Allocators need to track the state of allocated and free memory. This is often done by using data structures that keeps track of the state of each memory block. Metadata can be tracked externally, in a separate data structure, or internally within the block, or a combination of both.
+
+In multithreaded environments, concurrency control is necessary to ensure safety when allocating and deallocating memory. Synchronization negatively impacts performance, however, so modern allocators use various techniques to minimize synchronization overhead, e.g. by using thread-local data structures and even entire heap regions. Of course, these techniques come with additional memory overhead.
+
+Let's look into the key architectural concepts of each allocator.
+
 ### `libmalloc`
 
-- Multiple zones for different allocation sizes and allocation strategies.
-- Use of metadata associated with each block for bookkeeping, including checksums for added memory corruption protection.
-- Thread-local caching with per-thread magazines to reduce contention and improve concurrency.
-- Allocation algorithms that search free lists or cache to find suitable blocks, fall back to allocating new memory regions if needed.
+- Uses multiple zones for different allocation sizes and allocation strategies.
+- Stores metadata associated with each block for bookkeeping, including checksums for added memory corruption protection.
+- Employs thread-local caching with per-thread magazines to reduce contention and improve concurrency.
+- Implements allocation algorithms that search free lists or caches to find suitable blocks, and fall back to allocating new memory regions if needed.
 
 ### `jemalloc`
 
-- Uses arenas (independent allocation pools) reduce lock contention by allowing threads to allocate from different arenas concurrently. Each arena manages its own memory to avoid synchronization bottlenecks.
-- Thread-local caching to serve small allocations quickly without accessing the central arenas, which improves allocation speed and scalability.
 - Organizes allocations into predefined size classes. This organization reduces fragmentation by rounding requests up to the nearest size class and managing memory in runs dedicated to a single size class.
 - Memory is allocated in larger extents (virtual memory segments), which are subdivided into smaller regions or blocks corresponding to each size class. This hierarchical design aids efficient memory reuse and reduces fragmentation.
+- Uses arenas (independent allocation pools) reduce lock contention by allowing threads to allocate from different arenas concurrently. Each arena manages its own memory to avoid synchronization bottlenecks.
+- Thread-local caching serves small allocations quickly without accessing the central arenas, which improves allocation speed and scalability.
 - Delays returning memory to the OS to amortize overheads and groups related allocations to optimize memory layout and reduce fragmentation.
 
 ### `tcmalloc`
 
-- Per-CPU/per-thread Caches: Each CPU or thread has a local cache to serve most allocation and deallocation requests quickly without locking global structures. This reduces contention dramatically by localizing frequent operations.
-- Transfer caches act as an intermediate layer between per-thread caches and the central cache, designed to batch cache line transfers to minimize synchronization overhead.
-- A central cache maintains free lists of memory blocks organized by size classes. It serves requests from the transfer cache and pulls memory from the backend heap if needed.
-- The backend heap allocator manages large contiguous chunks of memory called spans, which are divided into smaller blocks for allocation. It requests memory from the OS and handles returning unused memory back to the system.
 - Allocation requests are rounded up to the nearest size class to reduce fragmentation and speed indexing into caches and free lists.
-
-Additional Details:
-The allocator uses metadata headers per size class with pointers to free objects for rapid allocation.
-
-It aims to reduce fragmentation and increase object reuse by managing block sizes carefully.
-
-TCMalloc's design effectively balances fast allocation, low fragmentation, and efficient multi-threaded operation.
-
-It is widely used in Google's production infrastructure and large-scale systems requiring robust, scalable memory management.
+- Per-CPU/per-thread Caches: Each CPU or thread has a local cache to serve most allocation and deallocation requests quickly without locking global structures. This reduces contention dramatically by localizing frequent operations.
+- A central cache maintains free lists of memory blocks organized by size classes. It serves requests from the transfer cache and pulls memory from the backend heap if needed.
+- Transfer caches act as an intermediate layer between per-thread caches and the central cache, designed to batch cache line transfers to minimize synchronization overhead.
+- The backend heap allocator manages large contiguous chunks of memory called spans, which are divided into smaller blocks for allocation. It requests memory from the OS and handles returning unused memory back to the system.
 
 ### `mimalloc`
 
@@ -69,36 +74,26 @@ It is widely used in Google's production infrastructure and large-scale systems 
 
 ### `hoard`
 
-Per-processor heaps: Each processor (or thread) has its own private heap where it allocates memory from. This reduces lock contention since allocation and freeing mostly operate on the local heap.
+- Each processor (or thread) has its own private heap where it allocates memory from. This reduces lock contention since allocation and freeing mostly operate on the local heap.
+- In addition to private heaps, there is a global heap used as a shared resource to balance memory usage across processors by transferring memory blocks (superblocks) between private heaps and the global heap.
+- Memory is managed in large chunks called superblocks, subdivided into smaller blocks of the same size class. Each superblock is owned by one heap and serves its allocation requests.
+- When a private heap becomes too empty or too full, superblocks are transferred to or from the global heap to maintain balanced memory usage and avoid excessive fragmentation.
+- Hoard ensures that superblocks are allocated and reused mostly by the same processor to prevent false sharing at the cache-line level, which is a common concurrency performance problem.
+- Each heap organizes superblocks into bins based on their fullness, favoring allocation from superblocks that are nearly full to improve locality and reduce fragmentation.
+- Objects larger than half a superblock are allocated directly from the OS virtual memory system.
 
-Global heap: In addition to private heaps, there is a global heap used as a shared resource to balance memory usage across processors by transferring memory blocks (superblocks) between private heaps and the global heap.
-
-Superblocks: Memory is managed in large chunks called superblocks (e.g., megabyte-sized), subdivided into smaller blocks of the same size class. Each superblock is owned by one heap and serves its allocation requests.
-
-Memory balance and transfer discipline: When a private heap becomes too empty or too full, superblocks are transferred to or from the global heap to maintain balanced memory usage and avoid excessive fragmentation.
-
-Avoiding false sharing: Hoard ensures that superblocks are allocated and reused mostly by the same processor to prevent false sharing at the cache-line level, which is a common concurrency performance problem.
-
-Allocation bins: Each heap organizes superblocks into bins based on their fullness, favoring allocation from superblocks that are nearly full to improve locality and reduce fragmentation.
-
-Large allocations: Objects larger than half a superblock are allocated directly from the OS virtual memory system.
-
-
-
-## Comparison
+## Benchmarks
 
 ### What to Compare?
 
-While the interface looks simple (in the end you are allocating, deallocating, sometimes resizing memory), the implementations of those allocators differ significantly. Different allocators have different performance characteristics, and are better suited for different workloads and computer architectures.
-
-When comparing different allocators, there are several key factors to consider:
+While the interface looks simple, the implementations of those allocators differ significantly. Different allocators have different performance characteristics, and are better suited for different workloads and computer architectures. When comparing allocators, there are several key performance indicators (KPIs) to consider:
 
 - **Throughput** (ops/sec)
 - **Latency** - (sec/op)
-- **Concurrency** - (synchronization)
-- **Memory overhead** - (memory used per allocation)
-- **Memory fragmentation** (memory wasted over time)
-- **Tooling** (debugging, profiling, leak checking)
+- **Memory usage** - (overhead and fragmentation)
+- **Tooling** (debugging, profiling, leak checking, ...)
+
+The workload (allocation size, frequency, number of threads, etc.) impacts these KPIs, so it is important to benchmark your specific workload. Let's look into the different KPIs in greater detail.
 
 ### Throughput
 
@@ -112,12 +107,16 @@ TODO restart benchmark with every configuration to ensure malloc internal state 
   - allocation overhead when allocation size is not aligned with internal page size
   - bookkeeping / synchronization overhead (can be per thread, per core, per pointer)
 
-Allocation overhead varies a lot between implementations. You can see zones / size class boundaries in the overhead. libmalloc: https://github.com/apple-oss-distributions/libmalloc/blob/d876784c79e2869ff1cce519f46905c49117f9a6/src/thresholds.h
+Allocation overhead varies a lot between implementations.
 
-TINY zone handles allocations up to 1008 bytes (~ 2<sup>10</sup> bytes).
-SMALL zone handles allocations from above TINY up to 32 KB (2<sup>15</sup> bytes).
-MEDIUM zone handles allocations from above SMALL up to 8 MB (2<sup>23</sup> bytes).
-LARGE zone handles allocations beyond the MEDIUM threshold.
+- You can see zones / size class boundaries in the overhead. 
+  - libmalloc: https://github.com/apple-oss-distributions/libmalloc/blob/d876784c79e2869ff1cce519f46905c49117f9a6/src/thresholds.h
+    - TINY zone handles allocations up to 1008 bytes (~ 2<sup>10</sup> bytes).
+    - SMALL zone handles allocations from above TINY up to 32 KB (2<sup>15</sup> bytes).
+    - MEDIUM zone handles allocations from above SMALL up to 8 MB (2<sup>23</sup> bytes).
+    - LARGE zone handles allocations beyond the MEDIUM threshold.
+  - hoard: https://www.oracle.com/technical-resources/articles/it-infrastructure/dev-mem-alloc.html
+    - Any allocation bigger than one half of a superblock or 32 KB will count as an oversize allocation, using `mmap` directly, bypassing the per-CPU cache.
 
 
 ```cpp
