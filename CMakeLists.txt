@@ -35,7 +35,7 @@ foreach(MALLOC ${MALLOC_IMPLEMENTATIONS})
     endif()
 
     # Proper executable target name
-    set(EXE_NAME "${PROJECT_NAME}-${MALLOC}")
+    set(EXE_NAME "${PROJECT_NAME}-benchmark-${MALLOC}")
     add_executable(${EXE_NAME} src/main.cpp)
 
     target_link_libraries(${EXE_NAME} PRIVATE benchmark::benchmark pthread)

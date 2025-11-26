@@ -128,6 +128,8 @@ def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_g
             y_label_final = "Latency"
         if "time" in y_label:
             y_label_final = f"{y_label_final} ({bm['time_unit']})"
+        if "percent" in y_label:
+            y_label_final = f"{y_label_final} (%)"
         if y_label == "rss":
             y_label_final = "RSS (MB)"
         if y_label == "items_per_second":
@@ -137,8 +139,6 @@ def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_g
             ax.set_xscale('log', base=2)
         if yscale == "log":
             ax.set_yscale('log', base=2)
-        if y_label == "overhead_bytes":
-            ax.set_yticks(np.linspace(0, 512, 17))
 
         if custom_xticks:
             all_x_values = [x for points in grouped_data.values() for x, _ in points]
@@ -173,7 +173,8 @@ plot_data(benchmarks, "allocation_latency", "implementation", "threads", "real_t
 plot_data(benchmarks, "allocation_latency", "implementation", "size", "real_time", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
 plot_data(benchmarks, "allocation_latency_tcmalloc", "threads", "size", "real_time", plot_filter=lambda b: b["implementation"] == "tcmalloc" and b["bm_name"] == "AllocationLatency")
 
-plot_data(benchmarks, "allocation_overhead", "implementation", "size", "overhead_bytes", facet_group="implementation", plot_filter=lambda b: b["bm_name"] == "AllocationOverhead", marker=None, xscale=None)
+plot_data(benchmarks, "Allocation Overhead (tiny)", "implementation", "size", "overhead_percent", facet_group="implementation", plot_filter=lambda b: b["bm_name"] == "AllocationOverhead" and b["size"] <= 2**5, marker=None, xscale="log", yscale=None)
+plot_data(benchmarks, "Allocation Overhead (regular)", "implementation", "size", "overhead_percent", facet_group="implementation", plot_filter=lambda b: b["bm_name"] == "AllocationOverhead" and b["size"] > 2**5, marker=None, xscale="log", yscale=None)
 
 plot_data(rss_results, "RSS Usage Per Thread (1000 x 1KB allocations)", "implementation", "threads", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1 and b["pointers"] == 1000 and b["size"] == 1024)
 plot_data(rss_results, "RSS Usage Per Size (4 threads, 100 pointers)", "implementation", "size", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1 and b["pointers"] == 100 and b["threads"] == 4)

@@ -24,7 +24,30 @@ Especially in performance critical applications, such as databases, webservers, 
 - [`mimalloc`](https://github.com/microsoft/mimalloc) - Developed by Microsoft Research as a modern general-purpose allocator, focusing on locality and reducing contention with innovations like page-local free lists and free list sharding for performance gains.
 - [`hoard`](https://github.com/emeryberger/Hoard) - Designed by Emery Berger and his team at the University of Massachusetts to reduce memory fragmentation and contention in multithreaded systems by partitioning heaps per thread, introduced in the early 2000s as a research-driven allocator.
 
-## How Do Memory Allocators Differ?
+## Allocator Architecture
+
+### `libmalloc`
+
+- Multiple zones for [different allocation sizes](https://github.com/apple-oss-distributions/libmalloc/blob/d876784c79e2869ff1cce519f46905c49117f9a6/src/thresholds.h) and allocation strategies (e.g. Nano zone optimized for tiny allocations).
+- Use of metadata associated with each block for bookkeeping, including checksums for added memory corruption protection.
+- Thread-local caching with per-thread magazines to reduce contention and improve concurrency.
+- Allocation algorithms that search free lists or cache to find suitable blocks, fall back to allocating new memory regions if needed.
+
+
+
+### `jemalloc`
+
+`jemalloc` is a scalable memory allocator designed to reduce fragmentation and efficiently support multithreaded environments. Its architecture is built around the concepts of arenas, thread caches, size classes, and memory chunks organized in a hierarchical manner to maximize concurrency and minimize contention.
+
+### `tcmalloc`
+
+### `mimalloc`
+
+### `hoard`
+
+## Comparison
+
+### What to Compare?
 
 While the interface looks simple (in the end you are allocating, deallocating, sometimes resizing memory), the implementations of those allocators differ significantly. Different allocators have different performance characteristics, and are better suited for different workloads and computer architectures.
 
@@ -37,57 +60,36 @@ When comparing different allocators, there are several key factors to consider:
 - **Memory fragmentation** (memory wasted over time)
 - **Tooling** (debugging, profiling, leak checking)
 
-## Allocator Architecture
-
-### `libmalloc`
-
-Apple's `libmalloc` architecture is designed around a scalable, multi-zone memory allocation system that uses several specialized zones for [different allocation sizes](https://github.com/apple-oss-distributions/libmalloc/blob/d876784c79e2869ff1cce519f46905c49117f9a6/src/thresholds.h) and purposes. The core allocator uses [mach memory APIs](https://developer.apple.com/documentation/kernel/mach) such as mach_vm_allocate and mach_vm_map to request memory from the OS. Libmalloc organizes memory into zones like the Nano zone for tiny allocations and the Scalable zone for larger ones. It includes data structures like magazines, free lists, bitmaps, and regions to efficiently manage blocks of memory.
-
-### `jemalloc`
-
-### `tcmalloc`
-
-### `mimalloc`
-
-### `hoard`
-
-## Comparison
-
 ### Throughput
 
 ### Latency
 
 ### Memory Usage
 
+- Two types of overhead:
+  - allocation overhead when allocation size is not aligned with internal page size
+  - bookkeeping / synchronization overhead (can be per thread, per core, per pointer)
+
+Allocation overhead varies a lot between implementations, ranging from a static 16 bytes only (liballoc), to a whopping 100% of the allocated size (hoard).
+
+TODO check with even larger sizes
+
+```cpp
+void* ptr = malloc(sz);
+size_t actual = malloc_size(ptr);
+size_t overhead = actual - sz;
+```
+
+![](plots/allocation_overhead_implementation_size_overhead_bytes_results.png)
+
+- All allocators but liballoc have stable overhead with an increasing number of threads
+- Overall memory overhead varies significantly, with mimalloc having the lower overhead
+  ![](plots/per_thread_cache_implementation_threads_rss_results.png)
+
+
 ### Tooling
 
-## Summary and Conclusion
-
-
-
-- jemalloc widely used in high performance databases (C*, ClickHouse)
-- compare different allocators
-- compare throughput
-- compare other metrics
-  - memory footprint and overhead
-  - memory fragmentation
-  - latency
-- compare tooling (debugging, profiling, etc.)
-  - heap profiling / telemetry API?
-  - memory debugging (double free)
-- compare jemalloc performance across different sizes with 8 threads
-- TODO https://github.com/google/benchmark/issues/178
-
-### TCMalloc
-
-- https://google.github.io/tcmalloc/overview.html
-- https://google.github.io/tcmalloc/design.html
-- https://stackoverflow.com/questions/76102375/what-are-rseqs-restartable-sequences-and-how-to-use-them
-- TC = "thread caching"
-- two modes: cache per thread, or cache per logical core
-- In both cases, these cache implementations allows TCMalloc to avoid requiring locks for most memory allocations and deallocations.
-
-### Malloc Stats
+#### Malloc Stats
 
 ```
 MALLOCSTATS=1 build/malloc-post-tcmalloc --benchmark_filter="BM_AllocationThroughput/2048/threads:8"
@@ -116,7 +118,7 @@ MALLOC:           8192              Tcmalloc page size
 ------------------------------------------------
 
 
-### Heap profiling
+#### Heap profiling
 
 ```
 HEAPPROFILE=malloc-post-tcmalloc.hprof build/malloc-post-tcmalloc --benchmark_filter="BM_AllocationThroughput/2048/threads:8"
@@ -124,7 +126,7 @@ pprof --web gfs_master malloc-post-tcmalloc.hprof.0001.heap
 pprof --base=malloc-post-tcmalloc.hprof.0005.heap --web gfs_master malloc-post-tcmalloc.hprof.0001.heap
 ```
 
-### Heap checking
+#### Heap checking
 
 https://goog-perftools.sourceforge.net/doc/heap_checker.html
 
@@ -134,24 +136,37 @@ HEAPCHECK=normal ./build/malloc-post-leak-tcmalloc
 
 Not working on MacOS
 
+## Summary and Conclusion
+
+------------
+
+- jemalloc widely used in high performance databases (C*, ClickHouse)
+- compare different allocators
+- compare throughput
+- compare other metrics
+  - memory footprint and overhead
+  - memory fragmentation
+  - latency
+- compare tooling (debugging, profiling, etc.)
+  - heap profiling / telemetry API?
+  - memory debugging (double free)
+- compare jemalloc performance across different sizes with 8 threads
+- TODO https://github.com/google/benchmark/issues/178
+
+### TCMalloc
+
+- https://google.github.io/tcmalloc/overview.html
+- https://google.github.io/tcmalloc/design.html
+- https://stackoverflow.com/questions/76102375/what-are-rseqs-restartable-sequences-and-how-to-use-them
+- TC = "thread caching"
+- two modes: cache per thread, or cache per logical core
+- In both cases, these cache implementations allows TCMalloc to avoid requiring locks for most memory allocations and deallocations.
+
 ## Results
 
 - Ratio for {'threads': 8, 'size': 1024} {'implementation': 'tcmalloc'} / {'implementation': 'libmalloc'}: 1.3716038584770054 items_per_second/items_per_second
 - Ratio for {'threads': 8, 'size': 1048576} {'implementation': 'tcmalloc'} / {'implementation': 'libmalloc'}: 20.009644120772688 items_per_second/items_per_second
 
-## Memory Overhead
-
-- Two types of overhead:
-  - allocation overhead when allocation size is not aligned with internal page size
-  - bookkeeping / synchronization overhead (can be per thread, per core, per pointer)
-
-Allocation overhead varies a lot between implementations, ranging from a static 16 bytes only (liballoc), to a whopping 100% of the allocated size (hoard).
-
-![](plots/allocation_overhead_implementation_size_overhead_bytes_results.png)
-
-- All allocators but liballoc have stable overhead with an increasing number of threads
-- Overall memory overhead varies significantly, with mimalloc having the lower overhead
-![](plots/per_thread_cache_implementation_threads_rss_results.png)
 
 
 For a database, the allocator choice affects throughput, latency tails, memory footprint, and operational behavior over long uptimes, so the key is to match the allocator’s behavior to your workload and SLOs.​
