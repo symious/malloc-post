@@ -105,12 +105,16 @@ While `libmalloc` is the default allocator on MacOS and part of `libSystem`, the
 ```bash
 # otool -L build/malloc-post-benchmark-libmalloc
 /usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)
-# brew info gperftools | grep Cellar
-/opt/homebrew/Cellar/gperftools/2.17.2
+
 # brew info jemalloc | grep Cellar
 /opt/homebrew/Cellar/jemalloc/5.3.0
+
+# brew info gperftools | grep Cellar
+/opt/homebrew/Cellar/gperftools/2.17.2
+
 # brew info mimalloc | grep Cellar
 /opt/homebrew/Cellar/mimalloc/3.1.5
+
 # brew info emeryberger/hoard/libhoard | grep Cellar
 /opt/homebrew/Cellar/libhoard/HEAD-5a7073f
 ```
@@ -401,10 +405,11 @@ First, we can see that all allocators except `libmalloc` reach a stable RSS size
 
 The starting memory usage differs significantly between allocators. `libmalloc` and `mimalloc` both consume less than 4MB, while `hoard` and `jemalloc` consume ~9MB and `tcmalloc` is the most hungry one with ~13MB. However, we can see that `libmalloc` reaches a stable size of ~13MB after 5 seconds as well.
 
-Next, let's investigate the RSS usage for an increasing allocation size
+Next, let's investigate the RSS usage for an increasing allocation size. When looking at the stable RSS size (1 second before the end) for each allocator, using 1KB allocations with a varying number of pointers and 4 threads, we can see that `libmalloc` indeed behaves differently than all the other allocators.
 
-- Overall memory overhead varies significantly, with mimalloc having the lower overhead
-  ![](plots/per_thread_cache_implementation_threads_rss_results.png)
+![](plots/max_rss_usage_(4_threads,_1kb_allocations)_implementation_pointers_rss_results.png)
+
+While the RSS size for all other allocators increases linearly with the allocated memory, `libmalloc` appears to consume much more memory than being allocated. A similar issue has been observed with the `glibc` default allocator on Linux and RocksDB, where the RSS was 3x higher compared to `jemalloc` (see [Battle of the Mallocators](https://smalldatum.blogspot.com/2025/04/battle-of-mallocators.html) for more details).
 
 ### Tooling
 
@@ -465,19 +470,19 @@ Not working on MacOS
 
 Apple's `libmalloc` has sophisticated security features such as kalloc_type and xzone malloc. While it has the highest CVE count[^libmalloc_cves], I believe this is due to extensive security research on Apple platforms.
 
-[^libmalloc_cves]: [CVE-2015-5889](https://www.cve.org/CVERecord?id=CVE-2015-5889), [CVE-2018-4433](https://www.cve.org/CVERecord?id=CVE-2018-4433), [CVE-2023-32428](https://www.cve.org/CVERecord?id=CVE-2023-32428)
+`jemalloc` and `tcmalloc` prioritize performance over security hardening, with minimal built-in protections. They have a handful of historical CVEs (`jemalloc`[^jemalloc_cves], `tcmalloc`[^tcmalloc_cves]) reported, which are all patched in recent versions.
 
 `mimalloc` offers the most comprehensive configurable security mode with guard pages, encrypted free lists, and randomization at ~10% performance cost. It has no core CVEs reported, only one minor advisory for the rust crate.[^mimalloc_cves] 
 
-[^mimalloc_cves]: [RUSTSEC-2022-0094](https://rustsec.org/advisories/RUSTSEC-2022-0094.html)
+[^libmalloc_cves]: [CVE-2015-5889](https://www.cve.org/CVERecord?id=CVE-2015-5889), [CVE-2018-4433](https://www.cve.org/CVERecord?id=CVE-2018-4433), [CVE-2023-32428](https://www.cve.org/CVERecord?id=CVE-2023-32428)
 
-`jemalloc` and `tcmalloc` prioritize performance over security hardening, with minimal built-in protections. They have a handful of historical CVEs (`jemalloc`[^jemalloc_cves], `tcmalloc`[^tcmalloc_cves]) reported, which are all patched in recent versions.
+[^mimalloc_cves]: [RUSTSEC-2022-0094](https://rustsec.org/advisories/RUSTSEC-2022-0094.html)
 
 [^jemalloc_cves]: [CVE-2007-6754](https://www.cve.org/CVERecord?id=CVE-2007-6754), [CVE-2006-7252](https://www.cve.org/CVERecord?id=CVE-2006-7252)
 
 [^tcmalloc_cves]: [CVE-2005-4895](https://www.cve.org/CVERecord?id=CVE-2005-4895)
 
-Hoard has the weakest security posture with documented overflow vulnerabilities such as multiple overflow vulnerabilities and no hardening features.
+`hoard` has the weakest security posture with documented overflow vulnerabilities such as multiple overflow vulnerabilities and no hardening features.
 
 ### Real World Scenario
 
@@ -485,13 +490,13 @@ C* libmalloc vs jemalloc
 
 ## Summary and Conclusion
 
-On all Apple operating systems, `libmalloc` is the default choice. The main focus is on security, with decent performance for most workloads.
+On all Apple operating systems, `libmalloc` is the default choice. The main focus is on security, with decent performance for most workloads. Given the high memory overhead however, it might not be a good fit for performance critical applications with high allocation rates.
 
-While `hoard` shines in certain areas, it does not appear to be a good choice, as it does not have steady performance characteristics across different allocation sizes and number of threads. It has severe security flaws and is not actively maintained.
+`tcmalloc` and `jemalloc` have the most stable performance characteristics across different allocation sizes and number of threads. The throughput remains reasonably high even at large allocation sizes, while latency remains within acceptable boundaries, with `jemalloc` winning in latency and `tcmalloc` winning in throughput for very large allocations. Among the ones I tested, those would be my preferred choice for applications with high performance requirements.
 
 `mimalloc` works well for smaller allocations, but suffers in both latency and throughput for larger allocations. The advanced security features might be a unique selling point for some users though.
 
-`tcmalloc` and `jemalloc` have the most stable performance characteristics across different allocation sizes and number of threads. The throughput remains reasonably high even at large allocation sizes, while latency remains within acceptable boundaries, with `jemalloc` winning in latency and `tcmalloc` winning in throughput for very large allocations. Among the ones I tested, those would be my preferred choice for applications with high performance requirements.
+While `hoard` shines in certain areas, it does not appear to be a good choice, as it does not have steady performance characteristics across different allocation sizes and number of threads. It has severe security flaws and is not actively maintained.
 
 ------------
 
