@@ -92,6 +92,7 @@ While the interface looks simple, the implementations of those allocators differ
 - **Latency** - (sec/op)
 - **Memory usage** - (overhead and fragmentation)
 - **Tooling** (debugging, profiling, leak checking, ...)
+- **Maintenance and Security** (CVEs, security hardening, etc.)
 
 The workload (allocation size, frequency, number of threads, etc.) impacts these KPIs, so it is important to benchmark your specific workload.
 
@@ -307,25 +308,16 @@ Since the latency difference between small and large allocations is in orders of
 
 We can see that all allocators perform small allocations within 20-30ns, except for `tcmalloc` in the face of a larger amount of threads and very small (<= 64B) allocation sizes.
 
-For larger allocations in a single-threaded environment, all allocators perform reasonably well. Only `mimalloc` starts to experience a significant latency increase for allocations > 64KB. When multiple threads come into play, hoard experiences a significant latency increase for allocations between 2KB and 32KB.
+For larger allocations in a single-threaded environment, all allocators perform reasonably well. Only `mimalloc` starts to experience a significant latency increase for allocations > 64KB. When multiple threads come into play, hoard experiences a significant latency increase for allocations between 2KB and 32KB and `tcmalloc` also starts to see a significant latency increase for allocations > 262KB.
 
 ### Memory Usage
 
-- Two types of overhead:
-  - allocation overhead when allocation size is not aligned with internal page size
-  - bookkeeping / synchronization overhead (can be per thread, per core, per pointer)
+When it comes to memory usage, we mainly care about two types of overhead:
 
-Allocation overhead varies a lot between implementations.
+- The allocation overhead when the allocation size is not aligned with the internal page size.
+- The bookkeeping / synchronization overhead (can be per thread, per core, per pointer)
 
-- You can see zones / size class boundaries in the overhead. 
-  - libmalloc: https://github.com/apple-oss-distributions/libmalloc/blob/d876784c79e2869ff1cce519f46905c49117f9a6/src/thresholds.h
-    - TINY zone handles allocations up to 1008 bytes (~ 2<sup>10</sup> bytes).
-    - SMALL zone handles allocations from above TINY up to 32 KB (2<sup>15</sup> bytes).
-    - MEDIUM zone handles allocations from above SMALL up to 8 MB (2<sup>23</sup> bytes).
-    - LARGE zone handles allocations beyond the MEDIUM threshold.
-  - hoard: https://www.oracle.com/technical-resources/articles/it-infrastructure/dev-mem-alloc.html
-    - Any allocation bigger than one half of a superblock or 32 KB will count as an oversize allocation, using `mmap` directly, bypassing the per-CPU cache.
-
+First, let's investigate the allocation overhead. We can use the [`malloc_size`](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/malloc_size.3.html) function that is part of the `malloc` interface on MacOS to determine the actual size of the allocation:
 
 ```cpp
 void* ptr = malloc(sz);
@@ -333,10 +325,84 @@ size_t actual = malloc_size(ptr);
 size_t overhead = actual - sz;
 ```
 
-![](plots/allocation_overhead_implementation_size_overhead_bytes_results.png)
+As expected, for tiny allocations, the overhead is very high (up to 1500% when allocating 1B with `libmalloc`). If your application is very memory constrained, `tcmalloc` has a "small-but-slow" mode that can be used when memory footprint minimization is more important than performance.
 
+![](plots/allocation_overhead_(tiny)_implementation_size_overhead_percent_results.png)
 
-- 
+Starting from 16B, all allocators reach a reasonable overhead <= 100%. Let's look at the overhead for larger allocations:
+
+![](plots/allocation_overhead_(regular)_implementation_size_overhead_percent_results.png)
+
+As you can see the allocation overhead varies a lot between implementations. While `jemalloc`, `mimalloc`, and `tcmalloc` manage to keep overhead below 30% for most allocation sizes, `libmalloc` and `hoard` have a much higher overhead. `hoard` continuously reaches 100% overhead for allocations <= 32KB. `libmalloc` has peaks at 33B, 1KB+1B, and 32KB+1B.
+
+In practice, to reduce waste, you should aim for allocations that are powers of two or at least aligned with the page size. On MacOS, you can use `malloc_good_size` to get the closest size that will not waste space, but it is not available on Linux. You can also prefer fewer, larger, long-lived buffers over many tiny allocations.
+
+The graphs also reveal information about the internal thresholds related to sizes. E.g. on `libmalloc`, the [zone thresholds](https://github.com/apple-oss-distributions/libmalloc/blob/d876784c79e2869ff1cce519f46905c49117f9a6/src/thresholds.h) align with the peaks in the graph:
+
+- TINY zone handles allocations up to 1008 bytes (~ 2<sup>10</sup> bytes).
+- SMALL zone handles allocations from above TINY up to 32 KB (2<sup>15</sup> bytes).
+- MEDIUM zone handles allocations from above SMALL up to 8 MB (2<sup>23</sup> bytes).
+- LARGE zone handles allocations beyond the MEDIUM threshold.
+
+In addition to the overhead per allocation, there is also bookkeeping overhead. Since measuring this accurately is more involved, I decided to write a simple program and measure the resident set size (RSS) of the process over time. On MacOS, we can use the Mach API (`mach/mach.h`), specifically the [`task_info`](https://developer.apple.com/documentation/kernel/1537934-task_info) function.
+
+```cpp
+size_t get_rss_bytes() {
+    struct mach_task_basic_info info;
+    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
+                  (task_info_t)&info, &count) == KERN_SUCCESS) {
+        return info.resident_size;
+    }
+    return 0;
+}
+```
+
+Next, we design a "worker" function that we can launch in a thread. It will spin until an external atomic flag indicates it to stop. First it will fill a vector of pointers with allocated memory, filled with 0s. Once all pointers are filled, it randomly selects a pointer to free and reallocate, simulating a workload. Before stopping, it frees all pointers.
+
+```cpp
+std::atomic<bool> should_stop(false);
+
+void worker_thread(size_t num_pointers, size_t pointer_size) {
+    std::vector<void*> pointers;
+    pointers.reserve(num_pointers);
+
+    while (!should_stop.load()) {
+        if (pointers.size() < num_pointers) {
+            void* ptr = malloc(pointer_size);
+            if (ptr != nullptr) {
+                memset(ptr, 0, pointer_size);
+                pointers.push_back(ptr);
+            }
+        } else {
+            size_t idx = rand() % pointers.size();
+            free(pointers[idx]);
+            void* ptr = malloc(pointer_size);
+            if (ptr != nullptr) {
+                memset(ptr, 0, pointer_size);
+                pointers[idx] = ptr;
+            }
+        }
+    }
+
+    for (void* ptr : pointers) {
+        free(ptr);
+    }
+}
+```
+
+In the main method, we can submit this function to a given number of threads, passing a given number of pointers and pointer size. We are going to capture the RSS size in the main thread before launching the threads, every 1 second while the threads are running, and after stopping all threads.
+
+The following graph plots the RSS size of the program over time for different allocators, running for 1 seconds with 1000 pointers and an allocation size of 1KB per pointer in 1 thread:
+
+![](plots/rss_usage_over_time_(1_thread,_1000_x_1kb_allocations)_implementation_seconds_rss_results.png)
+
+First, we can see that all allocators except `libmalloc` reach a stable RSS size immediately after the first measurement. The increase from the starting size to the stable size corresponds to the total size of allocated memory (1000 * 1KB = 1MB). You can also note that `jemalloc` is the only allocator dropping back to the starting usage after stopping the threads.
+
+The starting memory usage differs significantly between allocators. `libmalloc` and `mimalloc` both consume less than 4MB, while `hoard` and `jemalloc` consume ~9MB and `tcmalloc` is the most hungry one with ~13MB. However, we can see that `libmalloc` reaches a stable size of ~13MB after 5 seconds as well.
+
+Next, let's investigate the RSS usage for an increasing allocation size
+
 - Overall memory overhead varies significantly, with mimalloc having the lower overhead
   ![](plots/per_thread_cache_implementation_threads_rss_results.png)
 
@@ -395,17 +461,33 @@ HEAPCHECK=normal ./build/malloc-post-leak-tcmalloc
 
 Not working on MacOS
 
+### Maintenance and Security
+
+Apple's `libmalloc` has sophisticated security features such as kalloc_type and xzone malloc. While it has the highest CVE count[^libmalloc_cves], I believe this is due to extensive security research on Apple platforms.
+
+[^libmalloc_cves]: [CVE-2015-5889](https://www.cve.org/CVERecord?id=CVE-2015-5889), [CVE-2018-4433](https://www.cve.org/CVERecord?id=CVE-2018-4433), [CVE-2023-32428](https://www.cve.org/CVERecord?id=CVE-2023-32428)
+
+`mimalloc` offers the most comprehensive configurable security mode with guard pages, encrypted free lists, and randomization at ~10% performance cost. It has no core CVEs reported, only one minor advisory for the rust crate.[^mimalloc_cves] 
+
+[^mimalloc_cves]: [RUSTSEC-2022-0094](https://rustsec.org/advisories/RUSTSEC-2022-0094.html)
+
+`jemalloc` and `tcmalloc` prioritize performance over security hardening, with minimal built-in protections. They have a handful of historical CVEs (`jemalloc`[^jemalloc_cves], `tcmalloc`[^tcmalloc_cves]) reported, which are all patched in recent versions.
+
+[^jemalloc_cves]: [CVE-2007-6754](https://www.cve.org/CVERecord?id=CVE-2007-6754), [CVE-2006-7252](https://www.cve.org/CVERecord?id=CVE-2006-7252)
+
+[^tcmalloc_cves]: [CVE-2005-4895](https://www.cve.org/CVERecord?id=CVE-2005-4895)
+
+Hoard has the weakest security posture with documented overflow vulnerabilities such as multiple overflow vulnerabilities and no hardening features.
+
 ### Real World Scenario
 
 C* libmalloc vs jemalloc
 
-## Security?
-
-TODO https://www.perplexity.ai/search/please-compare-the-security-po-zpOxKDs0SMWPLlaOwGsBTw
-
 ## Summary and Conclusion
 
-While `hoard` shines in certain areas, it does not appear to be a good "default" choice, as it does not have steady performance characteristics across different allocation sizes and number of threads. It also does not appear to be actively maintained.
+On all Apple operating systems, `libmalloc` is the default choice. The main focus is on security, with decent performance for most workloads.
+
+While `hoard` shines in certain areas, it does not appear to be a good choice, as it does not have steady performance characteristics across different allocation sizes and number of threads. It has severe security flaws and is not actively maintained.
 
 `mimalloc` works well for smaller allocations, but suffers in both latency and throughput for larger allocations. The advanced security features might be a unique selling point for some users though.
 

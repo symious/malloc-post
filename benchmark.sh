@@ -25,6 +25,14 @@ run_allocation_latency_benchmark() {
     > /dev/null 2>> /tmp/BM_AllocationLatency.log
 }
 
+run_allocation_overhead_benchmark() {
+  rm -f /tmp/BM_AllocationOverhead.log
+  echo "Running allocation overhead benchmark for ${MALLOC}"
+  ${executable} --benchmark_filter="BM_AllocationOverhead" \
+    --benchmark_out="results/${MALLOC}_AllocationOverhead.json" \
+    > /dev/null 2>> /tmp/BM_AllocationOverhead.log
+}
+
 executable_prefix="./build/malloc-post-benchmark-"
 
 for executable in ${executable_prefix}*; do
