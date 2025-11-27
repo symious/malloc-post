@@ -69,7 +69,7 @@ static void BM_AllocationLatency(benchmark::State& state) {
 BENCHMARK(BM_AllocationLatency)
     ->RangeMultiplier(2)
     ->Range(1 << 1, 1 << 25)
-    ->Iterations(1000)
+    ->Iterations(1000000)
     ->UseManualTime()
     ->Threads(1)
     ->Threads(2)
@@ -124,9 +124,11 @@ BENCHMARK(BM_AllocationOverhead)
     ->Threads(1);
 
 static void BM_IntegerAddition(benchmark::State& state) {
+    int64_t iter = 0;
     for (auto _ : state) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         benchmark::DoNotOptimize(1 + 2);
+        state.SetIterationTime(++iter);
     }
     state.counters["counter"] = benchmark::Counter(1);
     state.counters["counter_rate"] = benchmark::Counter(1, benchmark::Counter::kIsRate);
@@ -136,7 +138,7 @@ static void BM_IntegerAddition(benchmark::State& state) {
 BENCHMARK(BM_IntegerAddition)
     ->Threads(1)
     ->Threads(10)
-    ->Iterations(1)
-    ->UseRealTime();
+    ->Iterations(2)
+    ->UseManualTime();
 
 BENCHMARK_MAIN();

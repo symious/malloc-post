@@ -1,0 +1,50 @@
+{
+  "context": {
+    "date": "2025-11-27T10:51:43+01:00",
+    "host_name": "Frank-Rosner-D3P6L20M92",
+    "executable": "./build/malloc-post-benchmark-tcmalloc",
+    "num_cpus": 12,
+    "mhz_per_cpu": 24,
+    "cpu_scaling_enabled": false,
+    "caches": [
+      {
+        "type": "Data",
+        "level": 1,
+        "size": 65536,
+        "num_sharing": 0
+      },
+      {
+        "type": "Instruction",
+        "level": 1,
+        "size": 131072,
+        "num_sharing": 0
+      },
+      {
+        "type": "Unified",
+        "level": 2,
+        "size": 4194304,
+        "num_sharing": 1
+      }
+    ],
+    "load_avg": [4.37012,3.37305,3.60059],
+    "library_version": "v1.9.4",
+    "library_build_type": "debug",
+    "json_schema_version": 1
+  },
+  "benchmarks": [
+    {
+      "name": "BM_AllocationLatency/4/iterations:1000000/manual_time/threads:1",
+      "family_index": 0,
+      "per_family_instance_index": 0,
+      "run_name": "BM_AllocationLatency/4/iterations:1000000/manual_time/threads:1",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 1000000,
+      "real_time": 2.4138860999760006e+01,
+      "cpu_time": 4.8622300000001519e+02,
+      "time_unit": "ns"
+    }
+  ]
+}

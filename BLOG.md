@@ -93,11 +93,41 @@ While the interface looks simple, the implementations of those allocators differ
 - **Memory usage** - (overhead and fragmentation)
 - **Tooling** (debugging, profiling, leak checking, ...)
 
-The workload (allocation size, frequency, number of threads, etc.) impacts these KPIs, so it is important to benchmark your specific workload. I'm running the benchmarks using Google Benchmark `v1.9.4` on my Nov 2023 MacBook Pro (M3) with MacOS `15.6.1`, compiled with Apple `clang-1700.0.13.5`. You can find the [source code](https://github.com/FRosner/malloc-post) on GitHub.
+The workload (allocation size, frequency, number of threads, etc.) impacts these KPIs, so it is important to benchmark your specific workload.
 
-[TODO]
+### Benchmarking Setup
 
-Note that we cannot actively "reset" the allocator between each benchmark run. To avoid interactions between runs, we'll use a bash script to run the individual benchmarks in a loop.
+I'm running the benchmarks using Google Benchmark `v1.9.4` on my Nov 2023 MacBook Pro (M3) with MacOS `15.6.1`, compiled with Apple `clang-1700.0.13.5`. You can find the [source code](https://github.com/FRosner/malloc-post) on GitHub. 
+
+While `libmalloc` is the default allocator on MacOS and part of `libSystem`, the other allocators are going to be installed via `brew`. Note that `tcmalloc` is part of `gperftools`, and `libhoard` is a custom tap (`brew tap emeryberger/hoard`). Here are the versions I am using:
+
+```bash
+# otool -L build/malloc-post-benchmark-libmalloc
+/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)
+# brew info gperftools | grep Cellar
+/opt/homebrew/Cellar/gperftools/2.17.2
+# brew info jemalloc | grep Cellar
+/opt/homebrew/Cellar/jemalloc/5.3.0
+# brew info mimalloc | grep Cellar
+/opt/homebrew/Cellar/mimalloc/3.1.5
+# brew info emeryberger/hoard/libhoard | grep Cellar
+/opt/homebrew/Cellar/libhoard/HEAD-5a7073f
+```
+
+I am using CMake to build the benchmark binaries for each allocator. The gist of the CMakeLists.txt is:
+
+```cmake
+set(MALLOC_IMPLEMENTATIONS jemalloc mimalloc hoard tcmalloc)
+foreach(MALLOC ${MALLOC_IMPLEMENTATIONS})
+    find_library(${MALLOC}_LIBRARY ${MALLOC})
+    set(EXE_NAME "${PROJECT_NAME}-benchmark-${MALLOC}")
+    add_executable(${EXE_NAME} src/main.cpp)
+    target_link_libraries(${EXE_NAME} PRIVATE benchmark::benchmark pthread)
+    target_link_libraries(${EXE_NAME} PRIVATE ${${MALLOC}_LIBRARY})
+endforeach()
+```
+
+Note that we cannot actively "reset" the allocator between each benchmark run. To avoid interactions between runs, we'll use a bash script to run the individual benchmarks in a loop. Thanks to the `--benchmark_filter` command line option and the way Google Benchmark builds benchmark names, we can loop over different parameters for a given benchmark, restarting the binary after each run.
 
 ```bash
 run_allocation_throughput_benchmark() {
@@ -121,11 +151,67 @@ for executable in ${executable_prefix}*; do
 done
 ```
 
-Next, let's look into the different KPIs in greater detail.
+We are storing the results in JSON files, which we combine, analyze and visualize using [matplotlib](https://matplotlib.org/) in Python. Here's the structure of a benchmark result file:
+
+```json
+{
+  "context": {
+    "date": "2025-11-26T14:00:48+01:00",
+    "host_name": "MyMacBook",
+    "executable": "./build/malloc-post-benchmark-hoard",
+    "num_cpus": 12,
+    "mhz_per_cpu": 24,
+    "cpu_scaling_enabled": false,
+    "caches": [
+      {
+        "type": "Data",
+        "level": 1,
+        "size": 65536,
+        "num_sharing": 0
+      },
+      {
+        "type": "Instruction",
+        "level": 1,
+        "size": 131072,
+        "num_sharing": 0
+      },
+      {
+        "type": "Unified",
+        "level": 2,
+        "size": 4194304,
+        "num_sharing": 1
+      }
+    ],
+    "load_avg": [2.55762,2.97754,3.83203],
+    "library_version": "v1.9.4",
+    "library_build_type": "debug",
+    "json_schema_version": 1
+  },
+  "benchmarks": [
+    {
+      "name": "BM_AllocationThroughput/2/iterations:1000/threads:1",
+      "family_index": 0,
+      "per_family_instance_index": 0,
+      "run_name": "BM_AllocationThroughput/2/iterations:1000/threads:1",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 1000,
+      "real_time": 5.1424708217382431e+04,
+      "cpu_time": 5.1425000000000051e+04,
+      "time_unit": "ns",
+      "items_per_second": 1.9445794846864346e+07
+    }
+  ]
+}
+```
+
+Now with the setup in place, let's look into the different KPIs in greater detail.
 
 ### Throughput
 
-To measure throughput, we design a benchmark that within each iteration, allocates memory of a given size for a fixed number of pointers (1000), then frees and reallocates memory for 1000 random pointers, and finally frees all pointers. This yields a total of 2000 memory allocations and frees per iteration. For the throughput counter `SetItemsProcessed` we treat two `malloc` plus two `free` calls as one "item".
+To measure throughput, we will design a benchmark that within each iteration, allocates memory of a given size for a fixed number of pointers (1000), then frees and reallocates memory for 1000 of these pointers at random, and finally frees all pointers. This yields a total of 2000 memory allocations and frees per iteration. For the throughput counter `SetItemsProcessed` we treat two `malloc` plus two `free` calls as one "item".
 
 ```cpp
 static void BM_AllocationThroughput(benchmark::State& state) {
@@ -182,9 +268,46 @@ We can also see that `hoard` has the highest throughput, more than 2x of what `m
 
 As you can see, the different allocators have vastly different throughput characteristics across the different workloads. While both `hoard` and `mimalloc` perform very well for small allocations, their throughput decreases rapidly for allocations > 1KB. `tcmalloc` takes the lead for allocations > 1KB and maintains a steady throughput up to 32KB (2<sup>15</sup> bytes). `jemalloc` has the lowest throughput for smaller allocation sizes, but maintains a decent throughput especially with increased parallelism compared to `mimalloc`, `hoard`, and `libmalloc`.
 
-TODO why?
+The sharp drop in throughput for larger allocations in the different allocators can be explained by the way they handle them internally. `tcmalloc` for example handles small allocations within the per-CPU caches in the front-end, while larger allocations have to go through the central free list, increasing lock contention (see architecture diagram below, taken from the `tcmalloc` [design documentation](https://google.github.io/tcmalloc/design.html)). The thresholds depend on the page size and can be viewed in the [size class definitions](https://github.com/google/tcmalloc/blob/master/tcmalloc/size_classes.cc).
+
+![](https://google.github.io/tcmalloc/images/tcmalloc_internals.png)
+
+Next, let's take a look at the latency of the different allocators.
 
 ### Latency
+
+For the latency benchmark, I was interested in the latency of the `malloc` call. To measure that, I used manual timing, measuring only the time spent in the `malloc` call:
+
+```cpp
+static void BM_AllocationLatency(benchmark::State& state) {
+    size_t sz = size_t(state.range(0));
+
+    for (auto _ : state) {
+        state.PauseTiming();
+
+        auto start = std::chrono::high_resolution_clock::now();
+        void* ptr = malloc(sz);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        if (!ptr) state.SkipWithError("malloc failed");
+
+        auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+        state.SetIterationTime(elapsed.count());
+
+        free(ptr);
+        state.ResumeTiming();
+    }
+}
+```
+
+Since the latency difference between small and large allocations is in orders of magnitude, I will plot small (<= 1KB) and larger (> 1KB) results separately:
+
+![](plots/allocation_latency_(small)_implementation_size_real_time_results.png)
+![](plots/allocation_latency_(large)_implementation_size_real_time_results.png)
+
+We can see that all allocators perform small allocations within 20-30ns, except for `tcmalloc` in the face of a larger amount of threads and very small (<= 64B) allocation sizes.
+
+For larger allocations in a single-threaded environment, all allocators perform reasonably well. Only `mimalloc` starts to experience a significant latency increase for allocations > 64KB. When multiple threads come into play, hoard experiences a significant latency increase for allocations between 2KB and 32KB.
 
 ### Memory Usage
 
@@ -217,10 +340,16 @@ size_t overhead = actual - sz;
 - Overall memory overhead varies significantly, with mimalloc having the lower overhead
   ![](plots/per_thread_cache_implementation_threads_rss_results.png)
 
-
 ### Tooling
 
+#### "Tunability"
+
+- https://google.github.io/tcmalloc/stats.html#page-sizes
+- https://google.github.io/tcmalloc/tuning.html
+
 #### Malloc Stats
+
+- https://google.github.io/tcmalloc/stats.html
 
 ```
 MALLOCSTATS=1 build/malloc-post-tcmalloc --benchmark_filter="BM_AllocationThroughput/2048/threads:8"
@@ -248,7 +377,6 @@ MALLOC:              1              Thread heaps in use
 MALLOC:           8192              Tcmalloc page size
 ------------------------------------------------
 
-
 #### Heap profiling
 
 ```
@@ -267,7 +395,21 @@ HEAPCHECK=normal ./build/malloc-post-leak-tcmalloc
 
 Not working on MacOS
 
+### Real World Scenario
+
+C* libmalloc vs jemalloc
+
+## Security?
+
+TODO https://www.perplexity.ai/search/please-compare-the-security-po-zpOxKDs0SMWPLlaOwGsBTw
+
 ## Summary and Conclusion
+
+While `hoard` shines in certain areas, it does not appear to be a good "default" choice, as it does not have steady performance characteristics across different allocation sizes and number of threads. It also does not appear to be actively maintained.
+
+`mimalloc` works well for smaller allocations, but suffers in both latency and throughput for larger allocations. The advanced security features might be a unique selling point for some users though.
+
+`tcmalloc` and `jemalloc` have the most stable performance characteristics across different allocation sizes and number of threads. The throughput remains reasonably high even at large allocation sizes, while latency remains within acceptable boundaries, with `jemalloc` winning in latency and `tcmalloc` winning in throughput for very large allocations. Among the ones I tested, those would be my preferred choice for applications with high performance requirements.
 
 ------------
 

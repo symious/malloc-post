@@ -1,0 +1,50 @@
+{
+  "context": {
+    "date": "2025-11-27T10:15:14+01:00",
+    "host_name": "Frank-Rosner-D3P6L20M92",
+    "executable": "./build/malloc-post-benchmark-libmalloc",
+    "num_cpus": 12,
+    "mhz_per_cpu": 24,
+    "cpu_scaling_enabled": false,
+    "caches": [
+      {
+        "type": "Data",
+        "level": 1,
+        "size": 65536,
+        "num_sharing": 0
+      },
+      {
+        "type": "Instruction",
+        "level": 1,
+        "size": 131072,
+        "num_sharing": 0
+      },
+      {
+        "type": "Unified",
+        "level": 2,
+        "size": 4194304,
+        "num_sharing": 1
+      }
+    ],
+    "load_avg": [3.36377,4.50049,4.17725],
+    "library_version": "v1.9.4",
+    "library_build_type": "debug",
+    "json_schema_version": 1
+  },
+  "benchmarks": [
+    {
+      "name": "BM_AllocationLatency/128/iterations:1000000/manual_time/threads:4",
+      "family_index": 0,
+      "per_family_instance_index": 0,
+      "run_name": "BM_AllocationLatency/128/iterations:1000000/manual_time/threads:4",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 4,
+      "iterations": 4000000,
+      "real_time": 2.4831382249742539e+01,
+      "cpu_time": 5.5373624999999936e+02,
+      "time_unit": "ns"
+    }
+  ]
+}

@@ -8,10 +8,21 @@ cmake --build build
 run_allocation_throughput_benchmark() {
   local size=$1
   local threads=$2
+  rm -f /tmp/BM_AllocationThroughput.log
   echo "Running allocation throughput benchmark for ${MALLOC} with ${size} size, ${threads} threads"
   ${executable} --benchmark_filter="BM_AllocationThroughput/${size}/iterations:1000/threads:${threads}" \
     --benchmark_out="results/${MALLOC}_AllocationThroughput_${size}_${threads}.json" \
-    > /dev/null
+    > /dev/null 2>> /tmp/BM_AllocationThroughput.log
+}
+
+run_allocation_latency_benchmark() {
+  local size=$1
+  local threads=$2
+  rm -f /tmp/BM_AllocationLatency.log
+  echo "Running allocation latency benchmark for ${MALLOC} with ${size} size, ${threads} threads"
+  ${executable} --benchmark_filter="BM_AllocationLatency/${size}/iterations:1000000/manual_time/threads:${threads}" \
+    --benchmark_out="results/${MALLOC}_AllocationLatency_${size}_${threads}.json" \
+    > /dev/null 2>> /tmp/BM_AllocationLatency.log
 }
 
 executable_prefix="./build/malloc-post-benchmark-"
@@ -21,6 +32,11 @@ for executable in ${executable_prefix}*; do
   for threads in 1 2 4 8; do
     for size in {1..22}; do
       run_allocation_throughput_benchmark $((2**size)) ${threads}
+    done
+  done
+  for threads in 1 2 4 8; do
+    for size in {1..22}; do
+      run_allocation_latency_benchmark $((2**size)) ${threads}
     done
   done
 done
