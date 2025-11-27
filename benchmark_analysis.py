@@ -96,7 +96,7 @@ def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_g
     min_y = min(all_y_values)
     max_y = max(all_y_values)
 
-    for idx, (facet_val, facet_entries) in enumerate(facet_data.items()):
+    for idx, (facet_val, facet_entries) in enumerate(sorted(facet_data.items())):
         ax = axes[idx]
         grouped_data = defaultdict(list)
         for entry in facet_entries:
@@ -172,19 +172,17 @@ def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_g
     plt.close()
 
 
+plot_data(benchmarks, "Allocation Throughput", "implementation", "size", "items_per_second", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput" and b["threads"] in {1, 4, 8})
+plot_data(benchmarks, "Allocation Throughput per Thread (1KB)", "implementation", "threads", "items_per_second", plot_filter=lambda b: b["size"] == 2**10 and b["bm_name"] == "AllocationThroughput")
 
-plot_data(benchmarks, "allocation_latency", "implementation", "threads", "real_time", facet_group="size", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
-plot_data(benchmarks, "allocation_latency", "implementation", "size", "real_time", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationLatency")
-plot_data(benchmarks, "allocation_latency_tcmalloc", "threads", "size", "real_time", plot_filter=lambda b: b["implementation"] == "tcmalloc" and b["bm_name"] == "AllocationLatency")
+plot_data(benchmarks, "Allocation Latency (small)", "implementation", "size", "real_time", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationLatency" and b["size"] <= 2**10 and b["threads"] in {1, 4, 8})
+plot_data(benchmarks, "Allocation Latency (large)", "implementation", "size", "real_time", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationLatency" and b["size"] > 2**10 and b["threads"] in {1, 4, 8})
 
 plot_data(benchmarks, "Allocation Overhead (tiny)", "implementation", "size", "overhead_percent", facet_group="implementation", plot_filter=lambda b: b["bm_name"] == "AllocationOverhead" and b["size"] <= 2**5, marker=None, xscale="log", yscale=None)
 plot_data(benchmarks, "Allocation Overhead (regular)", "implementation", "size", "overhead_percent", facet_group="implementation", plot_filter=lambda b: b["bm_name"] == "AllocationOverhead" and b["size"] > 2**5, marker=None, xscale="log", yscale=None)
 
-plot_data(rss_results, "RSS Usage Per Thread (1000 x 1KB allocations)", "implementation", "threads", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1 and b["pointers"] == 1000 and b["size"] == 1024)
-plot_data(rss_results, "RSS Usage Per Size (4 threads, 100 pointers)", "implementation", "size", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1 and b["pointers"] == 100 and b["threads"] == 4)
-plot_data(rss_results, "RSS Usage Per Pointers (4 threads, 1KB allocations)", "implementation", "pointers", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: math.floor(b["seconds"]) == 1 and b["size"] == 1024 and b["threads"] == 4)
-plot_data(benchmarks, "Allocation Throughput", "implementation", "size", "items_per_second", facet_group="threads", plot_filter=lambda b: b["bm_name"] == "AllocationThroughput" and b["threads"] in {1, 4, 8})
-plot_data(benchmarks, "Allocation Throughput per Thread (1KB)", "implementation", "threads", "items_per_second", plot_filter=lambda b: b["size"] == 2**10 and b["bm_name"] == "AllocationThroughput")
+plot_data(rss_results, "RSS Usage Over Time (1 thread, 1000 x 1KB allocations)", "implementation", "seconds", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: b["pointers"] == 1000 and b["size"] == 1024 and b["threads"] == 1)
+plot_data(rss_results, "Max RSS Usage (4 threads, 1KB allocations)", "implementation", "pointers", "rss", xscale=None, custom_xticks=False, plot_filter=lambda b: b["size"] == 1024 and b["threads"] == 4 and math.floor(b["seconds"]) == 9)
 
 def calculate_ratio(benchmark_filter, ratio_label, numerator_filter, denominator_filter):
     filtered_benchmarks = [bench for bench in benchmarks if all(bench[key] == value for key, value in benchmark_filter.items())]

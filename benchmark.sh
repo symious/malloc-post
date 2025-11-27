@@ -47,6 +47,7 @@ for executable in ${executable_prefix}*; do
       run_allocation_latency_benchmark $((2**size)) ${threads}
     done
   done
+  run_allocation_overhead_benchmark
 done
 
 run_rss_benchmark() {
