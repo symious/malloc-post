@@ -1,9 +1,9 @@
 ---
-title: malloc
-published: false
-description: 
-tags: cpp
-cover_image: 
+title: libmalloc, jemalloc, tcmalloc, mimalloc - Exploring Different Memory Allocators
+published: true
+description: In this post we are going to compare a few well-known allocators on MacOS in terms of throughput, latency, memory usage, tooling, and security.
+tags: cpp, benchmarking, memory, performance
+cover_image: https://dev-to-uploads.s3.amazonaws.com/uploads/articles/vvs0fminsnsi5htfavp2.png
 ---
 
 ## What Are Memory Allocators?
@@ -20,7 +20,7 @@ In [Writing My Own Dynamic Memory Management](https://dev.to/frosnerd/writing-my
 
 Efficient memory allocation is a complex problem, especially on modern computer architectures. Modern allocators combine advanced data structures and algorithms to achieve high performance in concurrent environments.
 
-Especially in performance critical applications, such as databases, webservers, and game engines, the choice of memory allocator can have a significant impact on performance. I wanted to learn more about the different allocators available. In this blog post we are going to compare a few well-known allocators on MacOS:
+Especially in performance critical applications, such as databases, web servers, and game engines, the choice of memory allocator can have a significant impact on performance. I wanted to learn more about the different allocators available. In this blog post we are going to compare a few well-known allocators on MacOS:
 
 - [`libmalloc`](https://github.com/apple-opensource/libmalloc) - The default allocator on MacOS, developed by Apple.
 - [`jemalloc`](https://github.com/jemalloc/jemalloc) - Created by Jason Evans originally for FreeBSD to address fragmentation and scaling issues, jemalloc is a scalable allocator widely adopted in performance-critical applications including Firefox and Facebook.
@@ -28,59 +28,13 @@ Especially in performance critical applications, such as databases, webservers, 
 - [`mimalloc`](https://github.com/microsoft/mimalloc) - Developed by Microsoft Research as a modern general-purpose allocator, focusing on locality and reducing contention with innovations like page-local free lists and free list sharding for performance gains.
 - [`hoard`](https://github.com/emeryberger/Hoard) - Designed by Emery Berger and his team at the University of Massachusetts to reduce memory fragmentation and contention in multithreaded systems by partitioning heaps per thread, introduced in the early 2000s as a research-driven allocator.
 
-## Allocator Architecture
-
-### Overview
+## Allocator Architectures
 
 All modern memory allocators share common architectural concepts to manage dynamic memory efficiently and safely. Allocation requests can come in different sizes, ranging from a few bytes to megabytes or even gigabytes. Allocators need to be equipped with strategies to handle different allocation sizes with minimal overhead and fragmentation. Commonly this is achieved by using some form of segmentation based on the requested size.
 
 Allocators need to track the state of allocated and free memory. This is often done by using data structures that keeps track of the state of each memory block. Metadata can be tracked externally, in a separate data structure, or internally within the block, or a combination of both.
 
 In multithreaded environments, concurrency control is necessary to ensure safety when allocating and deallocating memory. Synchronization negatively impacts performance, however, so modern allocators use various techniques to minimize synchronization overhead, e.g. by using thread-local data structures and even entire heap regions. Of course, these techniques come with additional memory overhead.
-
-Let's look into the key architectural concepts of each allocator.
-
-### `libmalloc`
-
-- Uses multiple zones for different allocation sizes and allocation strategies.
-- Stores metadata associated with each block for bookkeeping, including checksums for added memory corruption protection.
-- Employs thread-local caching with per-thread magazines to reduce contention and improve concurrency.
-- Implements allocation algorithms that search free lists or caches to find suitable blocks, and fall back to allocating new memory regions if needed.
-
-### `jemalloc`
-
-- Organizes allocations into predefined size classes. This organization reduces fragmentation by rounding requests up to the nearest size class and managing memory in runs dedicated to a single size class.
-- Memory is allocated in larger extents (virtual memory segments), which are subdivided into smaller regions or blocks corresponding to each size class. This hierarchical design aids efficient memory reuse and reduces fragmentation.
-- Uses arenas (independent allocation pools) reduce lock contention by allowing threads to allocate from different arenas concurrently. Each arena manages its own memory to avoid synchronization bottlenecks.
-- Thread-local caching serves small allocations quickly without accessing the central arenas, which improves allocation speed and scalability.
-- Delays returning memory to the OS to amortize overheads and groups related allocations to optimize memory layout and reduce fragmentation.
-
-### `tcmalloc`
-
-- Allocation requests are rounded up to the nearest size class to reduce fragmentation and speed indexing into caches and free lists.
-- Per-CPU/per-thread Caches: Each CPU or thread has a local cache to serve most allocation and deallocation requests quickly without locking global structures. This reduces contention dramatically by localizing frequent operations.
-- A central cache maintains free lists of memory blocks organized by size classes. It serves requests from the transfer cache and pulls memory from the backend heap if needed.
-- Transfer caches act as an intermediate layer between per-thread caches and the central cache, designed to batch cache line transfers to minimize synchronization overhead.
-- The backend heap allocator manages large contiguous chunks of memory called spans, which are divided into smaller blocks for allocation. It requests memory from the OS and handles returning unused memory back to the system.
-
-### `mimalloc`
-
-- Instead of a single large free list per size class, `mimalloc` uses many smaller free lists per `mimalloc` page (usually 64KiB) which contain blocks of a single size class. This significantly improves locality, reduces fragmentation, and increases allocation speed by keeping related allocations close in memory.
-- Each thread can allocate from its own heap, but it can also safely free memory owned by other threads. Internally, a heap contains segments, and each segment contains multiple pages dedicated to blocks of the same size class.
-- No locks, atomic operations only: To improve concurrency and scalability, `mimalloc` avoids locks by using atomic operations. It also separates free lists for frees performed by the owning thread and frees done by other threads, reducing contention drastically.
-- When a page becomes empty, it is marked back to the OS as unused (reset or decommitted), reducing real memory usage and fragmentation.
-- Supports advanced security modes that add guard pages around allocations, randomized allocation orders, encoded free list pointers, and guard page protections to mitigate heap overflow attacks and detect corruption.
-- Supports multiple heaps that can be created and destroyed efficiently, allowing objects allocated from different heaps to be managed collectively.
-
-### `hoard`
-
-- Each processor (or thread) has its own private heap where it allocates memory from. This reduces lock contention since allocation and freeing mostly operate on the local heap.
-- In addition to private heaps, there is a global heap used as a shared resource to balance memory usage across processors by transferring memory blocks (superblocks) between private heaps and the global heap.
-- Memory is managed in large chunks called superblocks, subdivided into smaller blocks of the same size class. Each superblock is owned by one heap and serves its allocation requests.
-- When a private heap becomes too empty or too full, superblocks are transferred to or from the global heap to maintain balanced memory usage and avoid excessive fragmentation.
-- Hoard ensures that superblocks are allocated and reused mostly by the same processor to prevent false sharing at the cache-line level, which is a common concurrency performance problem.
-- Each heap organizes superblocks into bins based on their fullness, favoring allocation from superblocks that are nearly full to improve locality and reduce fragmentation.
-- Objects larger than half a superblock are allocated directly from the OS virtual memory system.
 
 ## Benchmarks
 
@@ -91,10 +45,10 @@ While the interface looks simple, the implementations of those allocators differ
 - **Throughput** (ops/sec)
 - **Latency** - (sec/op)
 - **Memory usage** - (overhead and fragmentation)
-- **Tooling** (debugging, profiling, leak checking, ...)
+- **Tooling and Usability** (debugging, profiling, leak checking, ...)
 - **Maintenance and Security** (CVEs, security hardening, etc.)
 
-The workload (allocation size, frequency, number of threads, etc.) impacts these KPIs, so it is important to benchmark your specific workload.
+The workload (allocation size, frequency, number of threads, etc.) impacts these KPIs, so it is important to benchmark your specific workload. While there are also platform restrictions that might limit your choice (e.g. `libmalloc` is only available on Apple operating systems), I will ignore the platform limitations in the comparison.
 
 ### Benchmarking Setup
 
@@ -104,7 +58,7 @@ While `libmalloc` is the default allocator on MacOS and part of `libSystem`, the
 
 ```bash
 # otool -L build/malloc-post-benchmark-libmalloc
-/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)
+/usr/lib/libSystem.B.dylib (current version 1351.0.0)
 
 # brew info jemalloc | grep Cellar
 /opt/homebrew/Cellar/jemalloc/5.3.0
@@ -265,17 +219,17 @@ BENCHMARK(BM_AllocationThroughput)
 
 We expect the allocation throughput per thread to decrease with increased parallelism due to the increased synchronization overhead. When plotting the throughput (average "items processed" per second per thread) for allocation sizes of 1KB, we can see that the throughput decreases across the board:
 
-![](plots/allocation_throughput_per_thread_(1kb)_implementation_threads_items_per_second_results.png)
+![](https://github.com/FRosner/malloc-post/blob/main/plots/allocation_throughput_per_thread_(1kb)_implementation_threads_items_per_second_results.png?raw=true)
 
 We can also see that `hoard` has the highest throughput, more than 2x of what `mimalloc` achieves. This is only one data point, however, as we were looking at 1KB allocations. Let's look at the throughput for different allocation sizes and different number of threads:
 
-![](plots/allocation_throughput_implementation_size_items_per_second_results.png)
+![](https://github.com/FRosner/malloc-post/blob/main/plots/allocation_throughput_implementation_size_items_per_second_results.png?raw=true)
 
-As you can see, the different allocators have vastly different throughput characteristics across the different workloads. While both `hoard` and `mimalloc` perform very well for small allocations, their throughput decreases rapidly for allocations > 1KB. `tcmalloc` takes the lead for allocations > 1KB and maintains a steady throughput up to 32KB (2<sup>15</sup> bytes). `jemalloc` has the lowest throughput for smaller allocation sizes, but maintains a decent throughput especially with increased parallelism compared to `mimalloc`, `hoard`, and `libmalloc`.
+As you can see, the different allocators have vastly different throughput characteristics across the different workloads. While both `hoard` and `mimalloc` perform very well for small allocations, their throughput decreases rapidly for allocations > 1KB. `tcmalloc` takes the lead for allocations > 1KB and maintains a steady throughput up to 32KB (2<sup>15</sup> bytes). `jemalloc` has the lowest throughput for smaller allocation sizes, but maintains a decent throughput especially with increased parallelism compared to `mimalloc`, `hoard`, and `libmalloc`. In very large allocations, only `tcmalloc` and `jemalloc` remain competitive, with `tcmalloc` maintaining 50x of the throughput of `libmalloc` at 4MB allocations.
 
 The sharp drop in throughput for larger allocations in the different allocators can be explained by the way they handle them internally. `tcmalloc` for example handles small allocations within the per-CPU caches in the front-end, while larger allocations have to go through the central free list, increasing lock contention (see architecture diagram below, taken from the `tcmalloc` [design documentation](https://google.github.io/tcmalloc/design.html)). The thresholds depend on the page size and can be viewed in the [size class definitions](https://github.com/google/tcmalloc/blob/master/tcmalloc/size_classes.cc).
 
-![](https://google.github.io/tcmalloc/images/tcmalloc_internals.png)
+![](https://google.github.io/tcmalloc/images/tcmalloc_internals.png?raw=true)
 
 Next, let's take a look at the latency of the different allocators.
 
@@ -307,10 +261,11 @@ static void BM_AllocationLatency(benchmark::State& state) {
 
 Since the latency difference between small and large allocations is in orders of magnitude, I will plot small (<= 1KB) and larger (> 1KB) results separately:
 
-![](plots/allocation_latency_(small)_implementation_size_real_time_results.png)
-![](plots/allocation_latency_(large)_implementation_size_real_time_results.png)
+![](https://github.com/FRosner/malloc-post/blob/main/plots/allocation_latency_(small)_implementation_size_real_time_results.png?raw=true)
 
 We can see that all allocators perform small allocations within 20-30ns, except for `tcmalloc` in the face of a larger amount of threads and very small (<= 64B) allocation sizes.
+
+![](https://github.com/FRosner/malloc-post/blob/main/plots/allocation_latency_(large)_implementation_size_real_time_results.png?raw=true)
 
 For larger allocations in a single-threaded environment, all allocators perform reasonably well. Only `mimalloc` starts to experience a significant latency increase for allocations > 64KB. When multiple threads come into play, hoard experiences a significant latency increase for allocations between 2KB and 32KB and `tcmalloc` also starts to see a significant latency increase for allocations > 262KB.
 
@@ -318,7 +273,7 @@ For larger allocations in a single-threaded environment, all allocators perform 
 
 When it comes to memory usage, we mainly care about two types of overhead:
 
-- The allocation overhead when the allocation size is not aligned with the internal page size.
+- The allocation overhead when the allocation size is not aligned with the internal page size
 - The bookkeeping / synchronization overhead (can be per thread, per core, per pointer)
 
 First, let's investigate the allocation overhead. We can use the [`malloc_size`](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/malloc_size.3.html) function that is part of the `malloc` interface on MacOS to determine the actual size of the allocation:
@@ -331,13 +286,13 @@ size_t overhead = actual - sz;
 
 As expected, for tiny allocations, the overhead is very high (up to 1500% when allocating 1B with `libmalloc`). If your application is very memory constrained, `tcmalloc` has a "small-but-slow" mode that can be used when memory footprint minimization is more important than performance.
 
-![](plots/allocation_overhead_(tiny)_implementation_size_overhead_percent_results.png)
+![](https://github.com/FRosner/malloc-post/blob/main/plots/allocation_overhead_(tiny)_implementation_size_overhead_percent_results.png?raw=true)
 
 Starting from 16B, all allocators reach a reasonable overhead <= 100%. Let's look at the overhead for larger allocations:
 
-![](plots/allocation_overhead_(regular)_implementation_size_overhead_percent_results.png)
+![](https://github.com/FRosner/malloc-post/blob/main/plots/allocation_overhead_(regular)_implementation_size_overhead_percent_results.png?raw=true)
 
-As you can see the allocation overhead varies a lot between implementations. While `jemalloc`, `mimalloc`, and `tcmalloc` manage to keep overhead below 30% for most allocation sizes, `libmalloc` and `hoard` have a much higher overhead. `hoard` continuously reaches 100% overhead for allocations <= 32KB. `libmalloc` has peaks at 33B, 1KB+1B, and 32KB+1B.
+As you can see the allocation overhead varies a lot between implementations. While `jemalloc`, `mimalloc`, and `tcmalloc` manage to keep overhead below 30% for most allocation sizes, `libmalloc` and `hoard` have a much higher overhead. `hoard` continuously reaches 100% overhead for allocations <= 32KB. `libmalloc` has peaks at 33B, ~1KB, and 32KB+1B.
 
 In practice, to reduce waste, you should aim for allocations that are powers of two or at least aligned with the page size. On MacOS, you can use `malloc_good_size` to get the closest size that will not waste space, but it is not available on Linux. You can also prefer fewer, larger, long-lived buffers over many tiny allocations.
 
@@ -399,7 +354,7 @@ In the main method, we can submit this function to a given number of threads, pa
 
 The following graph plots the RSS size of the program over time for different allocators, running for 1 seconds with 1000 pointers and an allocation size of 1KB per pointer in 1 thread:
 
-![](plots/rss_usage_over_time_(1_thread,_1000_x_1kb_allocations)_implementation_seconds_rss_results.png)
+![](https://github.com/FRosner/malloc-post/blob/main/plots/rss_usage_over_time_(1_thread,_1000_x_1kb_allocations)_implementation_seconds_rss_results.png?raw=true)
 
 First, we can see that all allocators except `libmalloc` reach a stable RSS size immediately after the first measurement. The increase from the starting size to the stable size corresponds to the total size of allocated memory (1000 * 1KB = 1MB). You can also note that `jemalloc` is the only allocator dropping back to the starting usage after stopping the threads.
 
@@ -407,64 +362,148 @@ The starting memory usage differs significantly between allocators. `libmalloc` 
 
 Next, let's investigate the RSS usage for an increasing allocation size. When looking at the stable RSS size (1 second before the end) for each allocator, using 1KB allocations with a varying number of pointers and 4 threads, we can see that `libmalloc` indeed behaves differently than all the other allocators.
 
-![](plots/max_rss_usage_(4_threads,_1kb_allocations)_implementation_pointers_rss_results.png)
+![](https://github.com/FRosner/malloc-post/blob/main/plots/max_rss_usage_(4_threads,_1kb_allocations)_implementation_pointers_rss_results.png?raw=true)
 
 While the RSS size for all other allocators increases linearly with the allocated memory, `libmalloc` appears to consume much more memory than being allocated. A similar issue has been observed with the `glibc` default allocator on Linux and RocksDB, where the RSS was 3x higher compared to `jemalloc` (see [Battle of the Mallocators](https://smalldatum.blogspot.com/2025/04/battle-of-mallocators.html) for more details).
 
-### Tooling
+### Tooling and Usability
 
-#### "Tunability"
+For most applications, using the default allocator with the default settings is good enough. For some applications, you might want to switch to a different allocator. However, there are also very specialized applications, that either have very specific performance requirements, or are memory constrained. For those, the default settings might not be the best. Additionally, you might want to debug your allocation workload, e.g. by collecting and inspecting allocation statistics. Let's look into the tooling and configuration options for each allocator.
 
-- https://google.github.io/tcmalloc/stats.html#page-sizes
-- https://google.github.io/tcmalloc/tuning.html
+#### `libmalloc`
 
-#### Malloc Stats
+`libmalloc` allows some debugging configuration via environment variables, but there is no programmatic API or compile-time options, and little to no documented tuning options.
 
-- https://google.github.io/tcmalloc/stats.html
+The tooling for `libmalloc` is tightly coupled to the MacOS tooling. It supports features such as mapping allocation addresses to call stack when `MallocStackLogging` is enabled, heap integrity checking via `MallocCheckHeapStart`, and a few other options.
+
+#### `jemalloc`
+
+`jemalloc` has three configuration mechanisms:
+
+1. Environment variables. Via `MALLOC_CONF`, you can control nearly every aspec of the allocator. Example: `MALLOC_CONF="prof:true,lg_prof_sample:19,prof_prefix:jeprof.out,narenas:4,dirty_decay_ms:5000"` will enable heap profiling, sample every 512KB (2<sup>19</sup>B), write the profile to `jeprof.out`, use 4 arenas, and decay dirty pages after 5 seconds.
+2. Programmatic API. You can use the `mallctl` interface to change the settings at runtime without restarting.
+3. Compile-time options. Configuration can be baked via `--with-malloc-conf` or the `malloc_conf` global variable.
+
+In terms of debugging and profiling, `jemalloc` has a wide variety of features. The main tool is `jeprof`, that analyzes heap dumps and generates flame graphs. By enabling the `prof_leak` option, allocations without matching `free` calls are reported.
+
+```bash
+MALLOC_CONF="prof:true,prof_prefix:jeprof.out,lg_prof_interval:5" \
+  build/malloc-post-rss-jemalloc 4 1000 1024 10
+jeprof --pdf build/malloc-post-rss-jemalloc jeprof.out.0
+```
+
+Note that in order to enable the profiling hooks, `jemalloc` needs to be configured with [`--enable-prof`](https://developer.mantidproject.org/ProfilingWithJemalloc.html), which is not the case when installing it via homebrew. I was not able to compile it from source within a reasonable time frame, so I am not able to show the results here. But the features and presentation are very similar to what `tcmalloc` has to offer.
+
+#### `tcmalloc`
+
+`tcmalloc` also has three configuration mechanisms:
+
+1. Environment variables. Via different `TCMALLOC_*` variables, you can configure things like release rates, size thresholds, limiting the heap size, etc.
+2. Programmatic API. You can use the `MallocExtension` APIs to query and modify allocation parameters at runtime. Example: `MallocExtension::instance()->SetNumericProperty("tcmalloc.max_per_cpu_cache_size", 16777216);`
+3. Compile-time options. Fundamental behaviour can be selected via preprocessor flags like `-DTCMALLOC_INTERNAL_SMALL_BUT_SLOW` to turn on the small but slow allocator.
+
+In terms of tooling, `tcmalloc` is part of the Google Performance Tools (`gperftools`). The main relevant tool is `pprof`, which is similar to `jeprof` and used for analyzing heap profiles.
+
+```bash
+HEAPPROFILE=malloc-post-tcmalloc.hprof \
+  build/malloc-post-rss-tcmalloc 4 1000 1024 1
+  
+pprof -http=localhost:8080 build/malloc-post-rss-tcmalloc \
+  malloc-post-tcmalloc.hprof.0001.heap
+```
+
+It has multiple output formats, including a comprehensive Web UI, that can show flame graphs, call graphs, or a cumulated view (top):
 
 ```
-MALLOCSTATS=1 build/malloc-post-tcmalloc --benchmark_filter="BM_AllocationThroughput/2048/threads:8"
+Flat	Flat%	Sum%	Cum	Cum%	Name
+3.91MB	99.22%	99.22%	3.91MB	99.22%	[libsystem_malloc.dylib]	
+0.03MB	00.78%	99.99%	0.03MB	00.78%	std::__1::__libcpp_operator_new[abi:ne190102]	
+0	    00.00%	99.99%	3.94MB	99.89%	worker_thread	
+0	    00.00%	99.99%	0.03MB	00.78%	std::__1::vector::reserve	
+0	    00.00%	99.99%	0.03MB	00.78%	std::__1::allocator::allocate[abi:ne190102]	
+0	    00.00%	99.99%	3.94MB	99.89%	std::__1::__thread_proxy[abi:ne190102]	
+0	    00.00%	99.99%	3.94MB	99.89%	std::__1::__thread_execute[abi:ne190102]	
+0	    00.00%	99.99%	0.03MB	00.78%	std::__1::__split_buffer::__split_buffer	
+0	    00.00%	99.99%	0.03MB	00.78%	std::__1::__libcpp_allocate[abi:ne190102]	
+0	    00.00%	99.99%	3.94MB	99.89%	std::__1::__invoke[abi:ne190102]	
+0	    00.00%	99.99%	0.03MB	00.78%	std::__1::__allocate_at_least[abi:ne190102]	
+0	    00.00%	99.99%	3.94MB	99.89%	[libsystem_pthread.dylib]
 ```
 
--------------------------------------------------------------------------------------------------
-Benchmark                                       Time             CPU   Iterations UserCounters...
--------------------------------------------------------------------------------------------------
-BM_AllocationThroughput/2048/threads:8      88255 ns        87151 ns         8304 items_per_second=11.4743M/s
+The graph view shows the allocation size (1KB), too:
+
+![pprof graph view](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/vvs0fminsnsi5htfavp2.png)
+
+`tcmalloc` also supports summary statistics using `MALLOCSTATS=1`:
+
+```bash
+MALLOCSTATS=1 build/malloc-post-rss-tcmalloc 4 1000 1024 1
+```
+
+```text
 ------------------------------------------------
-MALLOC:          42592 (    0.0 MiB) Bytes in use by application
-MALLOC: +     12697600 (   12.1 MiB) Bytes in page heap freelist
-MALLOC: +      1905528 (    1.8 MiB) Bytes in central cache freelist
-MALLOC: +      1057024 (    1.0 MiB) Bytes in transfer cache freelist
-MALLOC: +      2123048 (    2.0 MiB) Bytes in thread cache freelists
+MALLOC:          20480 (    0.0 MiB) Bytes in use by application
+MALLOC: +      3801088 (    3.6 MiB) Bytes in page heap freelist
+MALLOC: +       372600 (    0.4 MiB) Bytes in central cache freelist
+MALLOC: +      1048576 (    1.0 MiB) Bytes in transfer cache freelist
+MALLOC: +          136 (    0.0 MiB) Bytes in thread cache freelists
 MALLOC: +      2621504 (    2.5 MiB) Bytes in malloc metadata
 MALLOC:   ------------
-MALLOC: =     20447296 (   19.5 MiB) Actual memory used (physical + swap)
+MALLOC: =      7864384 (    7.5 MiB) Actual memory used (physical + swap)
 MALLOC: +            0 (    0.0 MiB) Bytes released to OS (aka unmapped)
 MALLOC:   ------------
-MALLOC: =     20447296 (   19.5 MiB) Virtual address space used
+MALLOC: =      7864384 (    7.5 MiB) Virtual address space used
 MALLOC:
-MALLOC:            451              Spans in use
+MALLOC:            141              Spans in use
 MALLOC:              1              Thread heaps in use
 MALLOC:           8192              Tcmalloc page size
 ------------------------------------------------
-
-#### Heap profiling
-
-```
-HEAPPROFILE=malloc-post-tcmalloc.hprof build/malloc-post-tcmalloc --benchmark_filter="BM_AllocationThroughput/2048/threads:8"
-pprof --web gfs_master malloc-post-tcmalloc.hprof.0001.heap
-pprof --base=malloc-post-tcmalloc.hprof.0005.heap --web gfs_master malloc-post-tcmalloc.hprof.0001.heap
 ```
 
-#### Heap checking
+#### `mimalloc`
 
-https://goog-perftools.sourceforge.net/doc/heap_checker.html
+Similar to `libmalloc`, `mimalloc` supports some basic environment variable configuration. In contrast to `libmalloc`, it does support some performance related configuration. 
 
+It also has a `mi_option_set` programmatic API but the options are less fine-grained than `jemalloc` or `tcmalloc`, reflecting the philosophy of sensible defaults over exhaustive tunability.
+
+Tooling support for `mimalloc` is smaller compared to `jemalloc` and `tcmalloc`. It does not include a built-in sampling profiler, so you have to rely on external tools such as Valgrind. You can pass `MIMALLOC_SHOW_STATS` to get some basic statistics though.
+
+```bash
+MIMALLOC_SHOW_STATS=1 build/malloc-post-rss-mimalloc 4 1000 1024 1 
 ```
-HEAPCHECK=normal ./build/malloc-post-leak-tcmalloc
+
+```text
+heap stats:     peak       total     current       block      total#   
+  reserved:     1.0 GiB     1.0 GiB     1.0 GiB                          
+ committed:    11.1 MiB    11.5 MiB    11.1 MiB                          
+     reset:     0      
+    purged:     0      
+   touched:     0           0           0                                ok
+     pages:    68          68           0                                ok
+-abandoned:    13.6 Ki     17.3 Mi      0                                ok
+ -reclaima:     0      
+ -reclaimf:    17.3 Mi 
+-reabandon:     0      
+    -waits:     0      
+ -extended:     0      
+   -retire:     0      
+    arenas:     1      
+ -rollback:     0      
+     mmaps:    17      
+   commits:     0      
+    resets:     0      
+    purges:     0      
+   guarded:     0      
+   threads:     4           4           0                                ok
+  searches:     1.0 avg
+numa nodes:     1
+   elapsed:     2.011 s
+   process: user: 4.010 s, system: 0.030 s, faults: 94, rss: 6.7 MiB, commit: 11.1 MiB
 ```
 
-Not working on MacOS
+#### `hoard`
+
+`hoard` does not appear to have any configuration options or specific profiling tools.
 
 ### Maintenance and Security
 
@@ -484,104 +523,29 @@ Apple's `libmalloc` has sophisticated security features such as kalloc_type and 
 
 `hoard` has the weakest security posture with documented overflow vulnerabilities such as multiple overflow vulnerabilities and no hardening features.
 
-### Real World Scenario
-
-C* libmalloc vs jemalloc
-
 ## Summary and Conclusion
+
+Based on the findings and my limited experience with using the allocators when developing this post, I came up with the following comparison table. I will leave out `hoard`, because I don't think it's a practical choice for any real world application.
+
+|                           | `libmalloc` | `tcmalloc` | `jemalloc` | `mimalloc` |
+|---------------------------|-----------| --- |------------| --- |
+| **Throughput**            | ⭐⭐☆☆☆ | ⭐⭐⭐⭐☆ | ⭐⭐⭐☆☆      | ⭐⭐☆☆☆ |
+| **Latency**               | ⭐⭐⭐⭐⭐ | ⭐⭐☆☆☆ | ⭐⭐⭐⭐☆      | ⭐☆☆☆☆ |
+| **Memory Overhead**       | ⭐☆☆☆☆ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐☆      | ⭐⭐⭐⭐☆ |
+| **Tooling and Usability** | ⭐⭐⭐☆☆ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐☆      | ⭐⭐⭐☆☆ |
+| **Maintenance and Security** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐☆ | ⭐⭐⭐☆☆      | ⭐⭐⭐⭐⭐ |
+| Overall | 16/25 ⭐ | 20/25 ⭐ | 18/25 ⭐    | 15/25 ⭐ |
 
 On all Apple operating systems, `libmalloc` is the default choice. The main focus is on security, with decent performance for most workloads. Given the high memory overhead however, it might not be a good fit for performance critical applications with high allocation rates.
 
-`tcmalloc` and `jemalloc` have the most stable performance characteristics across different allocation sizes and number of threads. The throughput remains reasonably high even at large allocation sizes, while latency remains within acceptable boundaries, with `jemalloc` winning in latency and `tcmalloc` winning in throughput for very large allocations. Among the ones I tested, those would be my preferred choice for applications with high performance requirements.
+`tcmalloc` and `jemalloc` have the most stable performance characteristics across different allocation sizes and number of threads. The throughput remains reasonably high even at large allocation sizes, while latency remains within acceptable boundaries, with `jemalloc` winning in latency and `tcmalloc` winning in throughput for very large allocations. Among the ones I tested, those would be my preferred choice for applications with high performance requirements. They also have extensive configuration options that allows workload specific tuning. Note, however, that `jemalloc` appears to [somewhat dead](https://jasone.github.io/2025/06/12/jemalloc-postmortem/) as of 2025, so I'd rather go with `tcmalloc` for any new project.
 
 `mimalloc` works well for smaller allocations, but suffers in both latency and throughput for larger allocations. The advanced security features might be a unique selling point for some users though.
 
 While `hoard` shines in certain areas, it does not appear to be a good choice, as it does not have steady performance characteristics across different allocation sizes and number of threads. It has severe security flaws and is not actively maintained.
 
-------------
+Did you ever swap out the default allocator in your application? What was your experience? Let me know in the comments below!
 
-- jemalloc widely used in high performance databases (C*, ClickHouse)
-- compare different allocators
-- compare throughput
-- compare other metrics
-  - memory footprint and overhead
-  - memory fragmentation
-  - latency
-- compare tooling (debugging, profiling, etc.)
-  - heap profiling / telemetry API?
-  - memory debugging (double free)
-- compare jemalloc performance across different sizes with 8 threads
-- TODO https://github.com/google/benchmark/issues/178
+---
 
-### TCMalloc
-
-- https://google.github.io/tcmalloc/overview.html
-- https://google.github.io/tcmalloc/design.html
-- https://stackoverflow.com/questions/76102375/what-are-rseqs-restartable-sequences-and-how-to-use-them
-- TC = "thread caching"
-- two modes: cache per thread, or cache per logical core
-- In both cases, these cache implementations allows TCMalloc to avoid requiring locks for most memory allocations and deallocations.
-
-## Results
-
-- Ratio for {'threads': 8, 'size': 1024} {'implementation': 'tcmalloc'} / {'implementation': 'libmalloc'}: 1.3716038584770054 items_per_second/items_per_second
-- Ratio for {'threads': 8, 'size': 1048576} {'implementation': 'tcmalloc'} / {'implementation': 'libmalloc'}: 20.009644120772688 items_per_second/items_per_second
-
-
-
-For a database, the allocator choice affects throughput, latency tails, memory footprint, and operational behavior over long uptimes, so the key is to match the allocator’s behavior to your workload and SLOs.​
-
-Workload and allocation patterns
-Characterize the typical allocation sizes (tiny, small, large), object lifetimes, and locality patterns of your DB (buffer cache, query executor, background threads, etc.), since different allocators optimize for different size classes and lifetimes.​
-
-High‑throughput DBs often show that the same code compiled against different allocators can vary by 10–50% in query throughput and latency, depending on the allocator’s fit to the workload.​
-
-Throughput under concurrency
-For many‑core servers, lock contention in the allocator can dominate, so you want per‑thread or sharded heaps and low cross‑thread contention; jemalloc, tcmalloc, mimalloc and similar “high‑perf” allocators were designed for this.​
-
-Micro‑ and macro‑benchmarks on MySQL, LevelDB, RocksDB, and other engines consistently show better scalability from jemalloc/tcmalloc vs classic glibc malloc at high thread counts, with notably higher QPS and better parallel speedup.​
-
-Latency and tail behavior
-Look at p95–p99 latency impact, not just average throughput, because some allocators introduce long internal pauses (global locks, arena rebalancing, page reclamation) that show up as query latency spikes.​
-
-Experimental studies on OLAP/OLTP workloads show that certain glibc malloc versions can have much worse tail latencies than jemalloc or mimalloc under bursty request loads, even when median latency is similar.​
-
-Fragmentation and memory footprint
-Long‑running DBs with mixed allocation sizes are prone to fragmentation; allocators differ significantly here, with some trading higher virtual and RSS usage for speed, and others being more compact but slightly slower.​
-
-In practice, swapping from a default malloc to jemalloc or tcmalloc has reduced DB memory usage by multiple GiB on 16 GiB systems, but some experiments also show jemalloc consuming more memory than glibc in specific analytic workloads, so this must be measured for your case.​
-
-Returning memory to the OS
-Some allocators are aggressive about keeping arenas and pages for reuse and only reluctantly return memory to the OS, which can be good for performance but bad for multi‑tenant environments or dynamic workloads.​
-
-Others (or specific configuration modes) are more eager to hand memory back to the kernel, improving coexistence with other services at the cost of more page faults and occasional allocator work spikes.​
-
-Threading model and pools
-If the DB uses mostly static worker threads (typical for thread pools), allocators with per‑thread caches (like jemalloc’s per‑thread arenas) work very well and minimize contention.​
-
-If threads are frequently created and destroyed, an allocator whose design tolerates or optimizes for shifting thread ownership of caches (e.g., tcmalloc’s shared central cache model) can behave better and avoid cache blow‑up or many cold per‑thread heaps.​
-
-Introspection and tuning knobs
-Modern allocators expose detailed stats and profiling (fragmentation, size‑class usage, per‑arena counts), which are extremely useful for diagnosing odd memory behavior in a production DB.​
-
-Many provide tunables for arena count, decay policies, large allocation thresholds, and security hardening; being able to tune these without code changes is valuable for tailoring to different deployments.​
-
-Integration with DB design
-For core, high‑traffic subsystems (buffer pool, query execution, caching), consider using custom arenas/pools on top of the general allocator so hot paths avoid generic malloc as much as possible.​
-
-Where lifetimes are structured (per‑query, per‑transaction, per‑snapshot), region/arena allocators that free in bulk at scope end can outclass any general‑purpose malloc in both speed and fragmentation, reserving the global allocator mainly for long‑lived structures.​
-
-Stability, maturity, and ecosystem usage
-Prefer allocators that are widely deployed in similar production systems (e.g., major DBs, caches, cloud services) because their corner cases have been exercised and patched.​
-
-Projects like Redis, Varnish and large cloud services have reported significant improvements in stability and resource usage after switching from the system malloc to jemalloc or tcmalloc, which is a useful signal when choosing.​
-
-Operational considerations
-Ensure observability: can you attribute leaks or runaway growth to subsystems, and does the allocator’s tooling integrate with your existing profiling and monitoring stack.​
-
-Consider security and hardening options (guard pages, randomized layouts, secure modes) and balance them against performance overhead for your threat model and deployment environment.​
-
-Evaluation methodology
-Always benchmark your specific DB workload with candidate allocators using realistic schemas, queries, and concurrency, capturing throughput, p95/p99 latency, RSS/VSZ, fragmentation metrics, and page‑fault behavior over long uptimes.​
-
-Test behavior under overload and pathological patterns (e.g., many concurrent connections doing allocations, large batch loads, heavy churn) to catch allocator‑induced stalls or memory bloat before committing to one choice.​
+If you liked this post, you can [support me on ko-fi](https://ko-fi.com/frosnerd).

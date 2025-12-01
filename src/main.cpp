@@ -124,11 +124,9 @@ BENCHMARK(BM_AllocationOverhead)
     ->Threads(1);
 
 static void BM_IntegerAddition(benchmark::State& state) {
-    int64_t iter = 0;
     for (auto _ : state) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
         benchmark::DoNotOptimize(1 + 2);
-        state.SetIterationTime(++iter);
+        state.SetIterationTime(2);
     }
     state.counters["counter"] = benchmark::Counter(1);
     state.counters["counter_rate"] = benchmark::Counter(1, benchmark::Counter::kIsRate);
@@ -138,7 +136,7 @@ static void BM_IntegerAddition(benchmark::State& state) {
 BENCHMARK(BM_IntegerAddition)
     ->Threads(1)
     ->Threads(10)
-    ->Iterations(2)
+    ->Iterations(1)
     ->UseManualTime();
 
 BENCHMARK_MAIN();

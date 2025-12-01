@@ -168,7 +168,7 @@ def plot_data(benchmarks, plot_title, series_grouping, x_label, y_label, facet_g
         axes[idx].set_visible(False)
 
     plt.tight_layout()
-    plt.savefig(f"plots/{plot_title.replace(' ', '_').lower()}_{series_grouping}_{x_label}_{y_label}_results.png", dpi=300)
+    plt.savefig(f"plots/{plot_title.replace(' ', '_').lower()}_{series_grouping}_{x_label}_{y_label}_results.png", dpi=200)
     plt.close()
 
 
@@ -197,28 +197,10 @@ def calculate_ratio(benchmark_filter, ratio_label, numerator_filter, denominator
 
 
 calculate_ratio(
-    {"threads": 8, "size": 2**10},
+    {"threads": 8, "size": 2**22},
     "items_per_second",
     {"implementation": "tcmalloc", "bm_name": "AllocationThroughput"},
     {"implementation": "libmalloc", "bm_name": "AllocationThroughput"}
-)
-calculate_ratio(
-    {"threads": 8, "size": 2**20},
-    "items_per_second",
-    {"implementation": "tcmalloc", "bm_name": "AllocationThroughput"},
-    {"implementation": "libmalloc", "bm_name": "AllocationThroughput"}
-)
-calculate_ratio(
-    {"threads": 8, "size": 2**10},
-    "real_time",
-    {"implementation": "tcmalloc", "bm_name": "AllocationLatency"},
-    {"implementation": "libmalloc", "bm_name": "AllocationLatency"}
-)
-calculate_ratio(
-    {"threads": 8, "size": 2**20},
-    "real_time",
-    {"implementation": "tcmalloc", "bm_name": "AllocationLatency"},
-    {"implementation": "libmalloc", "bm_name": "AllocationLatency"}
 )
 
 
