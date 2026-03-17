@@ -1,5 +1,4 @@
-#include <malloc/malloc.h>
-#include <mach/mach.h>
+#include <malloc.h>
 #include <iostream>
 #include <vector>
 #include <thread>
@@ -7,17 +6,27 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <unistd.h>
+#include <fstream>
 
 size_t get_rss_bytes() {
-    struct mach_task_basic_info info;
-    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
-    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
-                  (task_info_t)&info, &count) == KERN_SUCCESS) {
-        return info.resident_size;
-    }
-    return 0;
+    long rss = 0;
+    std::ifstream statm("/proc/self/statm");
+    long size;
+    statm >> size >> rss;
+    return rss * sysconf(_SC_PAGESIZE);
 }
 
+//size_t get_rss_bytes_mac() {
+//    struct mach_task_basic_info info;
+//    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+//    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
+//                  (task_info_t)&info, &count) == KERN_SUCCESS) {
+//        return info.resident_size;
+//    }
+//    return 0;
+//}
+//
 std::atomic<bool> should_stop(false);
 
 void worker_thread(size_t num_pointers, size_t pointer_size) {

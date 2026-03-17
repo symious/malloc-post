@@ -1,32 +1,39 @@
 {
   "context": {
-    "date": "2025-11-27T10:29:17+01:00",
-    "host_name": "Frank-Rosner-D3P6L20M92",
+    "date": "2026-03-18T00:22:27+08:00",
+    "host_name": "zmc",
     "executable": "./build/malloc-post-benchmark-tcmalloc",
-    "num_cpus": 12,
-    "mhz_per_cpu": 24,
-    "cpu_scaling_enabled": false,
+    "num_cpus": 32,
+    "mhz_per_cpu": 5756,
+    "cpu_scaling_enabled": true,
+    "aslr_enabled": false,
     "caches": [
       {
         "type": "Data",
         "level": 1,
-        "size": 65536,
-        "num_sharing": 0
+        "size": 49152,
+        "num_sharing": 2
       },
       {
         "type": "Instruction",
         "level": 1,
-        "size": 131072,
-        "num_sharing": 0
+        "size": 32768,
+        "num_sharing": 2
       },
       {
         "type": "Unified",
         "level": 2,
-        "size": 4194304,
-        "num_sharing": 1
+        "size": 1048576,
+        "num_sharing": 2
+      },
+      {
+        "type": "Unified",
+        "level": 3,
+        "size": 33554432,
+        "num_sharing": 16
       }
     ],
-    "load_avg": [6.8125,5.50195,4.95752],
+    "load_avg": [3.94824,3.75977,2.14844],
     "library_version": "v1.9.4",
     "library_build_type": "debug",
     "json_schema_version": 1
@@ -42,8 +49,8 @@
       "repetition_index": 0,
       "threads": 8,
       "iterations": 8000000,
-      "real_time": 2.8856209874641227e+01,
-      "cpu_time": 2.4276599999999908e+03,
+      "real_time": 1.8194230249955186e+01,
+      "cpu_time": 1.2836100725000622e+02,
       "time_unit": "ns"
     }
   ]

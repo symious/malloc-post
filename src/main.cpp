@@ -4,7 +4,8 @@
 #include <random>
 #include <cstdlib>
 #include <chrono>
-#include <malloc/malloc.h>
+//#include <malloc/malloc.h>
+#include <malloc.h>
 #include <iostream>
 
 static void BM_AllocationThroughput(benchmark::State& state) {
@@ -86,7 +87,7 @@ static void BM_AllocationOverhead(benchmark::State& state) {
             continue;
         }
 
-        size_t actual = malloc_size(ptr);
+        size_t actual = malloc_usable_size(ptr);
         size_t overhead = actual - sz;
 
         free(ptr);
